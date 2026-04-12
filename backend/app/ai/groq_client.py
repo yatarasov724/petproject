@@ -41,18 +41,30 @@ async def _call_groq(title: str, content: str, source: str) -> dict | None:
     )
 
     import json
-    return json.loads(response.choices[0].message.content)
+    from app.ai.filter import VALID_TICKERS
+
+    result = json.loads(response.choices[0].message.content)
+
+    # Валидация: оставляем только тикеры из whitelist MOEX
+    result["tickers"] = [t for t in result.get("tickers", []) if t in VALID_TICKERS]
+    if not result["tickers"] and result.get("action") != "IRRELEVANT":
+        result["action"] = "IRRELEVANT"
+
+    return result
 
 
 SYSTEM_PROMPT = """Ты — аналитик российского фондового рынка MOEX.
-Анализируй политические и экономические новости и давай торговые сигналы ТОЛЬКО для российских акций.
-Отвечай СТРОГО в JSON формате. Тикеры должны быть из списка MOEX (SBER, GAZP, LKOH, YNDX, и т.д.).
+Анализируй новости и давай торговые сигналы ТОЛЬКО если новость ПРЯМО касается конкретной компании или сектора.
 
-Если новость не релевантна рынку — верни action: "IRRELEVANT".
+ПРАВИЛА:
+1. Тикер должен быть ЯВНО упомянут в новости (компания, CEO, продукт)
+2. Если связь косвенная или притянутая — верни IRRELEVANT
+3. Тикеры ТОЛЬКО из MOEX: SBER, GAZP, LKOH, YNDX, ROSN, GMKN, NVTK, TATN, VTBR, AFLT, MGNT, PHOR, ALRS, PLZL, OZON, CHMF, NLMK, MAGN, SNGS, MTSS, RTKM, MTLR, PIKK, FEES
+4. Confidence ниже 50% → лучше верни IRRELEVANT
 
-Формат ответа:
+Формат ответа (строго JSON):
 {
-  "tickers": ["SBER"],
+  "tickers": ["GAZP"],
   "action": "BUY" | "SELL" | "HOLD" | "IRRELEVANT",
   "confidence": 0-100,
   "timeframe": "immediate" | "short" | "medium",
