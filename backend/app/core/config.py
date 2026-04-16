@@ -6,12 +6,14 @@ class Settings(BaseSettings):
     telegram_api_id: int
     telegram_api_hash: str
     telegram_session_string: str = ""
+    telegram_bot_token: str = ""
+    telegram_channel_id: str = ""
     database_url: str = "sqlite:///./moex_assistant.db"
     frontend_url: str = "http://localhost:3000"
     secret_key: str = "changeme"
 
     class Config:
-        env_file = ".env"
+        env_file = ("../.env", ".env")  # ищем в корне проекта и в backend/
 
 
 settings = Settings()
