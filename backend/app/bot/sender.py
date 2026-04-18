@@ -1,8 +1,8 @@
 import aiohttp
-import os
+import logging
+from app.core.config import settings
 
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-CHANNEL_ID = os.environ.get("TELEGRAM_CHANNEL_ID", "")
+logger = logging.getLogger(__name__)
 
 SOURCE_NAMES = {
     "RBC": "РБК",
@@ -19,9 +19,9 @@ async def send_news(title: str, source: str, url: str):
     if url:
         text += f"\n[Читать далее]({url})"
 
-    url_api = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    url_api = f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage"
     payload = {
-        "chat_id": CHANNEL_ID,
+        "chat_id": settings.telegram_channel_id,
         "text": text,
         "parse_mode": "Markdown",
         "disable_web_page_preview": True,
@@ -29,7 +29,12 @@ async def send_news(title: str, source: str, url: str):
 
     async with aiohttp.ClientSession() as session:
         async with session.post(url_api, json=payload) as resp:
-            return await resp.json()
+            result = await resp.json()
+            if result.get("ok"):
+                logger.info(f"Telegram OK: {title[:50]}")
+            else:
+                logger.error(f"Telegram ошибка: {result}")
+            return result
 
 
 async def send_signal(signal: dict):

@@ -5,6 +5,7 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
+.pytest_cache/
 
 # Env
 .env
@@ -13,6 +14,7 @@ venv/
 # DB
 *.db
 *.sqlite
+data/
 
 # Node
 node_modules/
