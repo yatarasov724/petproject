@@ -20,8 +20,8 @@ class TestTokenize:
     def test_basic_split_and_lower(self):
         tokens = tokenize("Газпром снизил дивиденды")
         assert "газпром" in tokens
-        assert "снизил" in tokens
-        assert "дивиденды" in tokens
+        assert "снизить" in tokens   # lemma of "снизил"
+        assert "дивиденд" in tokens  # lemma of "дивиденды"
 
     def test_stop_words_removed(self):
         # "в", "и", "на" are in stop list
@@ -45,7 +45,7 @@ class TestTokenize:
 
     def test_deduplication(self):
         tokens = tokenize("санкции санкции санкции США")
-        assert tokens.count("санкции") == 1
+        assert tokens.count("санкция") == 1  # lemma of "санкции"
 
     def test_short_tokens_removed(self):
         # Single-char tokens (not stop words) should be removed by _MIN_TOKEN_LEN=2
@@ -140,3 +140,35 @@ class TestNormalize:
         }
         result = normalize(entry, source_id=1, source_name="RBC")
         assert result is not None
+
+
+# ── lemmatization ─────────────────────────────────────────────────────────────
+
+class TestLemmatization:
+    def test_inflected_noun_forms_produce_same_lemma(self):
+        """санкции / санкций / санкциям → все дают одну лемму 'санкция'."""
+        t1 = set(tokenize("американские санкции против банка"))
+        t2 = set(tokenize("американские санкций против банка"))
+        t3 = set(tokenize("американские санкциям против банка"))
+        assert t1 == t2 == t3
+
+    def test_inflected_verb_forms_produce_same_lemma(self):
+        """снизил / снизила / снизили → одна лемма 'снизить'."""
+        t1 = set(tokenize("компания снизила прибыль"))
+        t2 = set(tokenize("компания снизили прибыль"))
+        assert t1 == t2
+
+    def test_lemma_stored_not_inflected_form(self):
+        """В токенах хранится нормальная форма, а не флективная."""
+        tokens = tokenize("Газпром выплатил дивиденды")
+        assert "дивиденд" in tokens
+        assert "дивиденды" not in tokens
+
+    def test_cross_source_dedup_benefits(self):
+        """
+        'дивиденды объявлены' и 'объявление дивидендов' → одинаковые токены
+        после лемматизации → одинаковый raw_hash → exact-dedup срабатывает.
+        """
+        tokens_a = tokenize("Газпром дивиденды объявил")
+        tokens_b = tokenize("Газпром объявил дивиденды")
+        assert tokens_a == tokens_b

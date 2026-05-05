@@ -25,9 +25,26 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from functools import lru_cache
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# ── lemmatizer (optional — degrades gracefully if not installed) ──────────────
+
+try:
+    import pymorphy3 as _pymorphy3
+    _morph: "_pymorphy3.MorphAnalyzer | None" = _pymorphy3.MorphAnalyzer()
+except ImportError:
+    _morph = None
+    logger.warning("pymorphy3 not installed — tokenizer running without lemmatization")
+
+
+@lru_cache(maxsize=10_000)
+def _lemmatize(token: str) -> str:
+    if _morph is None:
+        return token
+    return _morph.parse(token)[0].normal_form
 
 
 # ── stop words ────────────────────────────────────────────────────────────────
@@ -155,16 +172,21 @@ def tokenize(title: str) -> list[str]:
       2. Remove punctuation (keep Cyrillic, Latin, digits, hyphens)
       3. Split on whitespace
       4. Drop stop words and short tokens
-      5. Sort (deterministic order)
+      5. Lemmatize with pymorphy3 (falls back to identity if not available)
+      6. Drop stop words and short tokens again (post-lemma forms may qualify)
+      7. Sort (deterministic order)
     """
     text = title.lower()
     text = _PUNCT.sub(" ", text)
     text = _SPACES.sub(" ", text).strip()
 
-    tokens = [
-        t for t in text.split()
-        if len(t) >= _MIN_TOKEN_LEN and t not in _STOP_WORDS
-    ]
+    tokens = []
+    for t in text.split():
+        if len(t) < _MIN_TOKEN_LEN or t in _STOP_WORDS:
+            continue
+        lemma = _lemmatize(t)
+        if len(lemma) >= _MIN_TOKEN_LEN and lemma not in _STOP_WORDS:
+            tokens.append(lemma)
 
     return sorted(set(tokens))
 
