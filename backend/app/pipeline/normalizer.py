@@ -101,6 +101,7 @@ class RawArticle:
     published_at: datetime      # UTC-aware
     raw_hash:     str           # MD5(sorted_tokens + date_hour) — exact dedup key
     title_tokens: str           # space-joined sorted lowercase tokens for Jaccard
+    content:      str = ""      # RSS description/summary for AI analysis (capped at 500 chars)
 
 
 # ── public API ────────────────────────────────────────────────────────────────
@@ -131,6 +132,7 @@ def normalize(
 
     title_tokens = " ".join(tokens)
     raw_hash = _make_hash(tokens, published_at)
+    content  = _extract_content(entry)
 
     return RawArticle(
         source_id=source_id,
@@ -140,6 +142,7 @@ def normalize(
         published_at=published_at,
         raw_hash=raw_hash,
         title_tokens=title_tokens,
+        content=content,
     )
 
 
@@ -184,6 +187,16 @@ def _make_hash(sorted_tokens: list[str], published_at: datetime) -> str:
     date_hour = published_at.strftime("%Y%m%d%H")
     fingerprint = " ".join(sorted_tokens) + date_hour
     return hashlib.md5(fingerprint.encode()).hexdigest()
+
+
+def _extract_content(entry: dict) -> str:
+    """Extract RSS article body (summary or content[0]), strip HTML, cap at 500 chars."""
+    raw = (
+        entry.get("summary", "")
+        or (entry.get("content") or [{}])[0].get("value", "")
+    )
+    text = _strip_html(raw).strip()
+    return text[:500]
 
 
 def _parse_date(entry: dict) -> Optional[datetime]:

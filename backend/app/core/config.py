@@ -16,7 +16,7 @@ Ignored / legacy (kept so existing .env doesn't break):
   GROQ_API_KEY, TELEGRAM_API_ID/HASH/SESSION_STRING — not used in MVP
 """
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -37,15 +37,19 @@ class Settings(BaseSettings):
     # Useful to verify ingestion/clustering/scoring without hitting the channel.
     dry_run:       bool = False
 
-    # ── legacy / unused in MVP ────────────────────────────────────────────────
+    # ── AI analysis ───────────────────────────────────────────────────────────
+    openrouter_api_key: str = ""
+
+    # ── legacy / unused ───────────────────────────────────────────────────────
     groq_api_key:            str = ""
     telegram_api_id:         int = 0
     telegram_api_hash:       str = ""
     telegram_session_string: str = ""
 
-    class Config:
-        env_file = ("../.env", ".env")
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(
+        env_file=("../.env", ".env"),
+        env_file_encoding="utf-8",
+    )
 
 
 settings = Settings()

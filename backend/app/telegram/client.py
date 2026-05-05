@@ -22,6 +22,7 @@ from typing import Optional
 
 import aiohttp
 
+from app.ai.analyzer import AIAnalysis
 from app.core import metrics
 from app.core.config import settings
 from app.db import queries
@@ -45,8 +46,7 @@ async def send(
     cluster: sqlite3.Row,
     score_result: ScoreResult,
     pub_decision: PublishDecision,
-    article_url: str = "",
-    source_name: str = "",
+    ai_analysis: Optional[AIAnalysis] = None,
 ) -> bool:
     """
     Format and send a message to the Telegram channel.
@@ -57,8 +57,7 @@ async def send(
         cluster=cluster,
         score_result=score_result,
         decision=pub_decision.decision,
-        article_url=article_url,
-        source_name=source_name,
+        ai_analysis=ai_analysis,
     )
 
     if settings.dry_run:

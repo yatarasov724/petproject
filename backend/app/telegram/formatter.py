@@ -1,30 +1,43 @@
 """
 Telegram message formatter.
 
-Message format (MarkdownV2):
-─────────────────────────────
-  *BADGE*
+Message format with AI analysis (MarkdownV2):
+─────────────────────────────────────────────
+  🔴 *СТАВКА ЦБ*
 
-  Заголовок события
+  ЦБ повысил ключевую ставку до 21 процента
 
-  Влияет на: сектор · актив · актив
+  _Что произошло:_ Банк России поднял ставку с 19% до 21%
+  _Для рынка:_ давление на акции и облигации, укрепление рубля
+
+  Влияет на: облигации · акции · рубль · ипотека
+  [Читать →](url)
+
+Fallback (no AI):
+─────────────────
+  *СТАВКА ЦБ*
+
+  ЦБ повысил ключевую ставку до 21 процента
+
+  Влияет на: облигации · акции · рубль · ипотека
   [Читать →](url)
 
 Design decisions:
-  - No raw score (35/100) — not meaningful to end user
+  - No raw score — not meaningful to end user
   - No source count — internal implementation detail
-  - No source name in meta — visible via the link
-  - "Влияет на:" line answers: what market segments does this touch?
-  - Badge answers: what category of event is this?
+  - "Влияет на:" is static per event type (reliable without LLM)
   - UPDATE events get ↻ prefix on the badge
+  - AI analysis uses emoji prefix + AI-normalized title + summary + market_effect
 """
 
 import sqlite3
+from typing import Optional
+
+from app.ai.analyzer import AIAnalysis
 from app.pipeline.scorer import EventType, ScoreResult
 from app.pipeline.publish_decision import Decision
 
 # ── badge labels ──────────────────────────────────────────────────────────────
-# Short, uppercase category label shown as the first line of each message.
 
 _BADGE: dict[EventType, str] = {
     EventType.SANCTIONS:        "САНКЦИИ",
@@ -49,29 +62,27 @@ _BADGE: dict[EventType, str] = {
 }
 
 # ── "Влияет на:" lines ────────────────────────────────────────────────────────
-# Describes which market segments are affected. Shown to the reader as context.
-# These are static per event type — good enough for MVP without LLM.
 
 _AFFECTS: dict[EventType, str] = {
-    EventType.SANCTIONS:        "акции · рубль · ОФЗ · commodities",
-    EventType.WAR_ESCALATION:   "акции · рубль · commodities · риск-сентимент",
-    EventType.DEFAULT:          "ОФЗ · рубль · акции · кредитный риск",
-    EventType.NATIONALIZATION:  "акции · equity risk · сектор",
-    EventType.RATE_DECISION:    "облигации · акции · рубль · ипотека",
-    EventType.EARNINGS:         "акции компании · мультипликаторы · сектор",
-    EventType.DIVIDENDS:        "акции компании · дивдоходность · реестр",
-    EventType.COMMODITY_SHOCK:  "нефтяной сектор · металлы · энергетика · commodities",
-    EventType.OPEC:             "нефть · акции нефтяников · рубль · commodities",
-    EventType.M_AND_A:          "акции участников · сектор · оценки",
-    EventType.IPO:              "новый эмитент · ликвидность · индексы MOEX",
-    EventType.SPO_BUYBACK:      "акции компании · free float · давление на цену",
-    EventType.MACRO_DATA:       "ОФЗ · рубль · ставки · ожидания рынка",
-    EventType.TRADE:            "акции экспортёров · commodities · пошлины · рубль",
-    EventType.REGULATION:       "сектор · акции затронутых компаний · compliance",
-    EventType.CORPORATE:        "акции компании · управление · сектор",
-    EventType.GEOPOLITICAL:     "риск-сентимент · акции · рубль · ОФЗ",
-    EventType.UNKNOWN:          "рынки",
-    EventType.NOISE:            "рынки",
+    EventType.SANCTIONS:        "акции · рубль · ОФЗ · сырьё",
+    EventType.WAR_ESCALATION:   "акции · рубль · сырьё",
+    EventType.DEFAULT:          "ОФЗ · рубль · акции",
+    EventType.NATIONALIZATION:  "акции · сектор",
+    EventType.RATE_DECISION:    "ОФЗ · акции · рубль",
+    EventType.EARNINGS:         "акции",
+    EventType.DIVIDENDS:        "акции",
+    EventType.COMMODITY_SHOCK:  "нефть · сырьё · акции",
+    EventType.OPEC:             "нефть · акции · рубль",
+    EventType.M_AND_A:          "акции",
+    EventType.IPO:              "акции",
+    EventType.SPO_BUYBACK:      "акции",
+    EventType.MACRO_DATA:       "ОФЗ · рубль · акции",
+    EventType.TRADE:            "акции · сырьё · рубль",
+    EventType.REGULATION:       "акции · сектор",
+    EventType.CORPORATE:        "акции",
+    EventType.GEOPOLITICAL:     "акции · рубль · ОФЗ",
+    EventType.UNKNOWN:          "акции",
+    EventType.NOISE:            "акции",
 }
 
 
@@ -79,26 +90,50 @@ def format_message(
     cluster: sqlite3.Row,
     score_result: ScoreResult,
     decision: Decision,
-    article_url: str = "",
-    source_name: str = "",
+    ai_analysis: Optional[AIAnalysis] = None,
 ) -> str:
     """
     Returns a MarkdownV2-formatted Telegram message.
-    All dynamic fields are passed through _esc() exactly once before assembly.
+    All dynamic fields pass through _esc() exactly once before assembly.
+
+    With AI analysis:
+      🟢 *ЗАГОЛОВОК*
+      Дескрипшн
+
+      _Для рынка:_ эффект
+
+      Влияет на: акции · рубль · ОФЗ
+
+    Fallback (no AI):
+      *↻ BADGE* (UPDATE) or *BADGE*
+
+      Заголовок
+
+      Влияет на: акции · рубль · ОФЗ
     """
-    badge   = _BADGE.get(score_result.event_type, "РЫНКИ")
-    affects = _AFFECTS.get(score_result.event_type, "рынки")
+    affects = _AFFECTS.get(score_result.event_type, "акции")
 
-    if decision == Decision.UPDATE:
-        badge = f"↻ {badge}"
-
-    title = cluster["canonical_title"]
-
-    parts = [
-        f"*{_esc(badge)}*",
-        "",
-        _esc(title),
-    ]
+    if ai_analysis:
+        prefix     = "↻ " if decision == Decision.UPDATE else ""
+        title_line = f"{ai_analysis.emoji} *{_esc(prefix + ai_analysis.title)}*"
+        parts = [
+            title_line,
+            "",
+            f"_Для рынка:_ {_esc(ai_analysis.market_effect)}",
+        ]
+        if ai_analysis.affects:
+            parts += ["", f"Влияет на: {_esc(ai_analysis.affects)}"]
+    else:
+        badge = _BADGE.get(score_result.event_type, "РЫНКИ")
+        if decision == Decision.UPDATE:
+            badge = f"↻ {badge}"
+        parts = [
+            f"*{_esc(badge)}*",
+            "",
+            _esc(cluster["canonical_title"]),
+            "",
+            f"Влияет на: {_esc(affects)}",
+        ]
 
     return "\n".join(parts)
 
