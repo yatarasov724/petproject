@@ -370,6 +370,85 @@ def log_send(
     db.commit()
 
 
+# ── admin: rss_sources CRUD ───────────────────────────────────────────────────
+
+def get_all_sources(db: sqlite3.Connection) -> list[sqlite3.Row]:
+    return db.execute(
+        "SELECT id, name, url, enabled, status, error_count, last_fetched_at, created_at "
+        "FROM rss_sources ORDER BY id"
+    ).fetchall()
+
+
+def add_source(db: sqlite3.Connection, name: str, url: str) -> int:
+    """
+    Insert a new RSS source. Raises sqlite3.IntegrityError on duplicate name or URL.
+    Returns the new row id.
+    """
+    cur = db.execute(
+        "INSERT INTO rss_sources (name, url) VALUES (?, ?)",
+        (name, url),
+    )
+    db.commit()
+    assert cur.lastrowid is not None
+    return cur.lastrowid
+
+
+def disable_source(db: sqlite3.Connection, source_id: int) -> bool:
+    """Soft-delete: set enabled=0. Returns True if a row was updated."""
+    cur = db.execute(
+        "UPDATE rss_sources SET enabled = 0 WHERE id = ?",
+        (source_id,),
+    )
+    db.commit()
+    return cur.rowcount > 0
+
+
+def update_source(
+    db: sqlite3.Connection,
+    source_id: int,
+    url: Optional[str] = None,
+    enabled: Optional[bool] = None,
+) -> bool:
+    """
+    Update url and/or enabled flag. Returns True if a row was updated.
+    At least one of url or enabled must be provided.
+    """
+    parts: list[str] = []
+    params: list = []
+    if url is not None:
+        parts.append("url = ?")
+        params.append(url)
+    if enabled is not None:
+        parts.append("enabled = ?")
+        params.append(1 if enabled else 0)
+    if not parts:
+        return False
+    params.append(source_id)
+    cur = db.execute(
+        f"UPDATE rss_sources SET {', '.join(parts)} WHERE id = ?",
+        params,
+    )
+    db.commit()
+    return cur.rowcount > 0
+
+
+def reset_source_backoff(db: sqlite3.Connection, source_id: int) -> bool:
+    """Reset backoff state so the source is polled on the next cycle."""
+    cur = db.execute(
+        """
+        UPDATE rss_sources
+        SET    status        = 'ok',
+               error_count   = 0,
+               last_error_at = NULL,
+               next_retry_at = NULL
+        WHERE  id = ?
+        """,
+        (source_id,),
+    )
+    db.commit()
+    return cur.rowcount > 0
+
+
 # ── retention ─────────────────────────────────────────────────────────────────
 
 def run_retention(db: sqlite3.Connection) -> None:

@@ -23,6 +23,7 @@ from app.core import logging_setup, metrics
 from app.db.database import init_db, get_db
 from app.db.queries import seed_sources
 from app.scheduler import runner
+from app.api.routes.admin import router as admin_router
 
 # ── logging — must be first ───────────────────────────────────────────────────
 logging_setup.configure(
@@ -66,6 +67,10 @@ async def shutdown() -> None:
     runner.stop()
     logger.info("app stopped", extra={"event": "app_stopped"})
 
+
+# ── routers ────────────────────────────────────────────────────────────────────
+
+app.include_router(admin_router)
 
 # ── routes ─────────────────────────────────────────────────────────────────────
 
