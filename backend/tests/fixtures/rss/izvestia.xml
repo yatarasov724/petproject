@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Известия — Финансы</title>
+    <link>https://iz.ru</link>
+    <item>
+      <title>Сбербанк рекомендовал дивиденды в размере 34 рублей на акцию</title>
+      <link>https://iz.ru/1234567/article</link>
+      <pubDate>Mon, 05 May 2026 11:00:00 +0300</pubDate>
+      <description>Наблюдательный совет Сбербанка рекомендовал выплату дивидендов.</description>
+    </item>
+    <item>
+      <title>Московская биржа зафиксировала рекордный объём торгов облигациями</title>
+      <link>https://iz.ru/1234568/article</link>
+      <pubDate>Mon, 05 May 2026 10:00:00 +0300</pubDate>
+      <description>Оборот на рынке облигаций вырос до максимального значения за год.</description>
+    </item>
+  </channel>
+</rss>

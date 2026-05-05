@@ -14,13 +14,30 @@ logger = logging.getLogger(__name__)
 # ── seed data ─────────────────────────────────────────────────────────────────
 
 _RSS_SEEDS = [
-    # RBC finance feed is unreachable (DNS failure) — disabled
-    # ("RBC", "https://rss.rbc.ru/finances/news.rss"),
+    # ── tier 1: financial news agencies ──────────────────────────────────────
     ("TASS",       "https://tass.ru/rss/v2.xml"),
-    ("Interfax",   "https://www.interfax.ru/rss"),       # was /rss.asp → 301
+    ("Interfax",   "https://www.interfax.ru/rss"),
+    ("Prime",      "https://1prime.ru/export/rss2/index.xml"),
+    ("RIA",        "https://ria.ru/export/rss2/index.xml"),
+
+    # ── tier 2: business newspapers ──────────────────────────────────────────
     ("Vedomosti",  "https://www.vedomosti.ru/rss/news"),
-    ("Kommersant", "https://www.kommersant.ru/rss/news.xml"),  # was /RSS/ → 301
-    ("Prime",      "https://1prime.ru/export/rss2/index.xml"),  # финансовое агентство
+    ("Kommersant", "https://www.kommersant.ru/rss/news.xml"),
+    ("BFM",        "https://www.bfm.ru/news.rss"),
+    ("Izvestia",   "https://iz.ru/xml/rss/finances.xml"),
+    ("Gazeta",     "https://www.gazeta.ru/export/rss/business.xml"),
+
+    # ── tier 3: general + market data ────────────────────────────────────────
+    ("RG",         "https://rg.ru/xml/index.xml"),            # Rossiyskaya Gazeta
+    ("Lenta",      "https://lenta.ru/rss/articles/economics"),
+    ("Investing",  "https://ru.investing.com/rss/news.rss"),
+    ("MOEX",       "https://www.moex.com/export/news.aspx"),  # exchange bulletins
+
+    # ── disabled (unreachable as of 2026-05) ─────────────────────────────────
+    # ("RBC",     "https://rbc.ru/rss/news"),           # 404
+    # ("Forbes",  "https://www.forbes.ru/rss"),         # 400
+    # ("Finam",   "https://www.finam.ru/..."),          # 403
+    # ("CBR",     "https://www.cbr.ru/rss/"),           # 404
 ]
 
 _BACKOFF_MAX_MINUTES = 120

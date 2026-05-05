@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>BFM.ru — Новости</title>
+    <link>https://www.bfm.ru</link>
+    <item>
+      <title>ЦБ сохранил ключевую ставку на уровне 21 процента</title>
+      <link>https://www.bfm.ru/news/123456</link>
+      <pubDate>Mon, 05 May 2026 12:00:00 +0300</pubDate>
+      <description>Банк России на заседании совета директоров сохранил ключевую ставку.</description>
+    </item>
+    <item>
+      <title>Газпром отчитался по МСФО за первый квартал 2026 года</title>
+      <link>https://www.bfm.ru/news/123457</link>
+      <pubDate>Mon, 05 May 2026 10:30:00 +0300</pubDate>
+      <description>Выручка компании выросла на 8 процентов год к году.</description>
+    </item>
+  </channel>
+</rss>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Lenta.ru — Экономика</title>
+    <link>https://lenta.ru</link>
+    <item>
+      <title>Роснефть увеличила добычу нефти в первом квартале на три процента</title>
+      <link>https://lenta.ru/news/2026/05/05/rosneft/</link>
+      <pubDate>Mon, 05 May 2026 10:00:00 +0300</pubDate>
+      <description>Производственные результаты компании оказались выше прогнозов аналитиков.</description>
+    </item>
+    <item>
+      <title>Яндекс проведёт IPO дочерней компании на Московской бирже</title>
+      <link>https://lenta.ru/news/2026/05/05/yandex/</link>
+      <pubDate>Mon, 05 May 2026 09:00:00 +0300</pubDate>
+      <description>Размещение акций планируется на второй квартал 2026 года.</description>
+    </item>
+  </channel>
+</rss>

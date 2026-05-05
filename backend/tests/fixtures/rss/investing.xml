@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Investing.com — Новости</title>
+    <link>https://ru.investing.com</link>
+    <item>
+      <title>Brent достиг отметки 85 долларов за баррель на фоне решения ОПЕК</title>
+      <link>https://ru.investing.com/news/commodities-news/article-1234</link>
+      <pubDate>Mon, 05 May 2026 15:00:00 GMT</pubDate>
+      <description>Цена нефти марки Brent выросла после объявления ОПЕК о сокращении добычи.</description>
+    </item>
+    <item>
+      <title>Индекс МосБиржи снизился на 1,2 процента по итогам сессии</title>
+      <link>https://ru.investing.com/news/stock-market-news/article-1235</link>
+      <pubDate>Mon, 05 May 2026 14:00:00 GMT</pubDate>
+      <description>Акции нефтяного сектора оказали давление на индекс.</description>
+    </item>
+  </channel>
+</rss>

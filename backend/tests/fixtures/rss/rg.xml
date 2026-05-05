@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Российская газета</title>
+    <link>https://rg.ru</link>
+    <item>
+      <title>Правительство утвердило параметры федерального бюджета на 2027 год</title>
+      <link>https://rg.ru/2026/05/05/budzhet.html</link>
+      <pubDate>Mon, 05 May 2026 14:00:00 +0300</pubDate>
+      <description>Дефицит бюджета на следующий год запланирован на уровне 1,5 процента ВВП.</description>
+    </item>
+    <item>
+      <title>Норникель заключил соглашение о поставках никеля в Индию</title>
+      <link>https://rg.ru/2026/05/05/nornickel.html</link>
+      <pubDate>Mon, 05 May 2026 11:30:00 +0300</pubDate>
+      <description>Сделка рассчитана на три года и оценивается в 2 миллиарда долларов.</description>
+    </item>
+  </channel>
+</rss>

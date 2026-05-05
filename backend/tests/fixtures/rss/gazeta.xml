@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Газета.Ru — Бизнес</title>
+    <link>https://www.gazeta.ru</link>
+    <item>
+      <title>Лукойл объявил об обратном выкупе акций на 50 миллиардов рублей</title>
+      <link>https://www.gazeta.ru/business/2026/05/05/123456.shtml</link>
+      <pubDate>Mon, 05 May 2026 13:20:00 +0300</pubDate>
+      <description>Совет директоров ЛУКОЙЛа одобрил программу buyback.</description>
+    </item>
+    <item>
+      <title>Инфляция в России ускорилась до 9,2 процента в апреле</title>
+      <link>https://www.gazeta.ru/business/2026/05/05/123457.shtml</link>
+      <pubDate>Mon, 05 May 2026 12:00:00 +0300</pubDate>
+      <description>Росстат опубликовал данные по потребительским ценам за апрель.</description>
+    </item>
+  </channel>
+</rss>

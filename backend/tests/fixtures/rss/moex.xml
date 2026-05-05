@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Московская Биржа — Новости</title>
+    <link>https://www.moex.com</link>
+    <item>
+      <title>Московская биржа приостановила торги акциями ПАО Сегежа</title>
+      <link>https://www.moex.com/n123456</link>
+      <pubDate>Mon, 05 May 2026 10:00:00 +0300</pubDate>
+      <description>Приостановка торгов связана с корпоративным событием эмитента.</description>
+    </item>
+    <item>
+      <title>Итоги торгов на фондовом рынке МосБиржи за 5 мая 2026 года</title>
+      <link>https://www.moex.com/n123457</link>
+      <pubDate>Mon, 05 May 2026 19:00:00 +0300</pubDate>
+      <description>Объём торгов акциями составил 85 миллиардов рублей.</description>
+    </item>
+  </channel>
+</rss>
