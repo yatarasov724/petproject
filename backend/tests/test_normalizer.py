@@ -172,3 +172,64 @@ class TestLemmatization:
         tokens_a = tokenize("Газпром дивиденды объявил")
         tokens_b = tokenize("Газпром объявил дивиденды")
         assert tokens_a == tokens_b
+
+
+# ── synonyms ──────────────────────────────────────────────────────────────────
+
+class TestSynonyms:
+    def test_цб_рф_normalizes_to_цб(self):
+        tokens = tokenize("ЦБ РФ повысил ставку")
+        assert "цб" in tokens
+        assert "рф" not in tokens
+
+    def test_центробанк_normalizes_to_цб(self):
+        tokens = tokenize("Центробанк повысил ключевую ставку")
+        assert "цб" in tokens
+        assert "центробанк" not in tokens
+
+    def test_банк_России_nom_normalizes_to_цб(self):
+        tokens = tokenize("Банк России принял решение по ставке")
+        assert "цб" in tokens
+
+    def test_банк_России_gen_normalizes_to_цб(self):
+        # "решение Банка России" — genitive
+        tokens = tokenize("решение Банка России по ключевой ставке")
+        assert "цб" in tokens
+
+    def test_центральный_банк_normalizes_to_цб(self):
+        tokens = tokenize("Центральный банк сохранил ставку на уровне 16 процентов")
+        assert "цб" in tokens
+        assert "центральный" not in tokens
+        assert "банк" not in tokens
+
+    def test_all_цб_variants_produce_identical_tokens(self):
+        """ЦБ / ЦБ РФ / Центробанк / Банк России → одинаковые наборы токенов."""
+        base = set(tokenize("ЦБ повысил ставку"))
+        assert set(tokenize("ЦБ РФ повысил ставку"))       == base
+        assert set(tokenize("Центробанк повысил ставку"))  == base
+        assert set(tokenize("Банк России повысил ставку")) == base
+
+    def test_сбер_normalizes_to_сбербанк(self):
+        tokens = tokenize("Сбер выплатил дивиденды")
+        assert "сбербанк" in tokens
+        assert "сбер" not in tokens
+
+    def test_сбербанк_not_double_expanded(self):
+        # "сбербанк" должен оставаться "сбербанк", не превращаться в "сбербанкбанк"
+        tokens = tokenize("Сбербанк отчитался по МСФО")
+        assert "сбербанк" in tokens
+        assert "сбербанкбанк" not in tokens
+
+    def test_московская_биржа_normalizes(self):
+        tokens = tokenize("Московская биржа приостановила торги")
+        assert "мосбиржа" in tokens
+        assert "московская" not in tokens
+
+    def test_тинькофф_банк_normalizes(self):
+        tokens = tokenize("Тинькофф Банк изменил условия вклада")
+        assert "тинькофф" in tokens
+
+    def test_т_банк_normalizes(self):
+        # "Т-Банк" → после punct strip → "т банк" → "тинькофф"
+        tokens = tokenize("Т-Банк сменил название")
+        assert "тинькофф" in tokens

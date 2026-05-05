@@ -47,6 +47,45 @@ def _lemmatize(token: str) -> str:
     return _morph.parse(token)[0].normal_form
 
 
+# ── synonym map ───────────────────────────────────────────────────────────────
+# Applied after lowercase + punct-strip, before tokenization.
+# Space-padding ensures only whole-word matches (no substring collisions).
+# Sorted longest-first so "центральный банк рф" is tried before "центральный банк".
+
+_SYNONYM_PAIRS: list[tuple[str, str]] = sorted([
+    # ── Центральный банк / ЦБ ─────────────────────────────────────────────
+    ("центральный банк рф",    "цб"),
+    ("центральный банк",       "цб"),
+    ("банк россии",            "цб"),   # nom:  Банк России
+    ("банка россии",           "цб"),   # gen:  решение Банка России
+    ("банку россии",           "цб"),   # dat:  передано Банку России
+    ("банком россии",          "цб"),   # ins:  установлено Банком России
+    ("банке россии",           "цб"),   # prep: в Банке России
+    ("цб рф",                  "цб"),   # аббр. с РФ
+    ("центробанк",             "цб"),
+
+    # ── Сбербанк ──────────────────────────────────────────────────────────
+    ("сбер",                   "сбербанк"),  # "Сбер" как разговорное; space-pad не тронет "сбербанк"
+
+    # ── Т-Банк / Тинькофф ─────────────────────────────────────────────────
+    ("тинькофф банк",          "тинькофф"),
+    ("т-банк",                 "тинькофф"),  # hyphen kept by _PUNCT regex
+    ("т банк",                 "тинькофф"),  # fallback if hyphen was stripped
+
+    # ── Московская биржа ──────────────────────────────────────────────────
+    ("московская биржа",       "мосбиржа"),
+], key=lambda p: -len(p[0]))
+
+
+def _apply_synonyms(text: str) -> str:
+    """Replace known entity variants with their canonical form.
+    Padding with spaces guarantees whole-word substitution."""
+    padded = " " + text + " "
+    for phrase, canonical in _SYNONYM_PAIRS:
+        padded = padded.replace(" " + phrase + " ", " " + canonical + " ")
+    return padded.strip()
+
+
 # ── stop words ────────────────────────────────────────────────────────────────
 
 # Russian grammatical particles, prepositions, conjunctions, common verbs.
@@ -170,7 +209,7 @@ def tokenize(title: str) -> list[str]:
     Steps:
       1. Lowercase
       2. Remove punctuation (keep Cyrillic, Latin, digits, hyphens)
-      3. Split on whitespace
+      3. Synonym normalization (ЦБ РФ / Центробанк / Банк России → цб, etc.)
       4. Drop stop words and short tokens
       5. Lemmatize with pymorphy3 (falls back to identity if not available)
       6. Drop stop words and short tokens again (post-lemma forms may qualify)
@@ -179,6 +218,7 @@ def tokenize(title: str) -> list[str]:
     text = title.lower()
     text = _PUNCT.sub(" ", text)
     text = _SPACES.sub(" ", text).strip()
+    text = _apply_synonyms(text)
 
     tokens = []
     for t in text.split():
