@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 # Near-dedup configuration
 JACCARD_THRESHOLD       = 0.35
 NEAR_DEDUP_WINDOW_HOURS = 4     # only compare against articles seen in this window
+NEAR_DEDUP_MAX_POOL     = 1000  # max rows loaded for Jaccard comparison (caps O(N) scan)
 
 
 # ── result type ───────────────────────────────────────────────────────────────
@@ -77,7 +78,7 @@ def check(db: sqlite3.Connection, article: RawArticle) -> DedupResult:
 
     # Stage 2: near
     recent_tokens = queries.get_recent_title_tokens(
-        db, within_hours=NEAR_DEDUP_WINDOW_HOURS
+        db, within_hours=NEAR_DEDUP_WINDOW_HOURS, limit=NEAR_DEDUP_MAX_POOL
     )
     best_score, _ = _best_jaccard(article.title_tokens, recent_tokens)
 

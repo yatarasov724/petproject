@@ -146,12 +146,21 @@ def is_exact_duplicate(db: sqlite3.Connection, raw_hash: str) -> bool:
 def get_recent_title_tokens(
     db: sqlite3.Connection,
     within_hours: int = 4,
+    limit: int = 1000,
 ) -> list[str]:
-    """Returns list of title_token strings for near-dedup Jaccard check."""
+    """
+    Returns title_token strings for near-dedup Jaccard check.
+
+    ORDER BY seen_at DESC ensures the most recent articles are checked first,
+    which improves early-exit hit rate in _best_jaccard().
+    LIMIT caps memory and CPU even under high ingest volume.
+    Trade-off: articles older than the limit window may be missed by near-dedup,
+    but exact-dedup (raw_hash) still catches them.
+    """
     cutoff = _iso(datetime.now(timezone.utc) - timedelta(hours=within_hours))
     rows = db.execute(
-        "SELECT title_tokens FROM seen_articles WHERE seen_at >= ?",
-        (cutoff,),
+        "SELECT title_tokens FROM seen_articles WHERE seen_at >= ? ORDER BY seen_at DESC LIMIT ?",
+        (cutoff, limit),
     ).fetchall()
     return [r["title_tokens"] for r in rows]
 
