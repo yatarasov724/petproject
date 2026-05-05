@@ -29,6 +29,7 @@ from enum import Enum
 
 from datetime import datetime, timezone, timedelta
 
+from app.ai import analyzer
 from app.core import metrics
 from app.db import queries
 from app.pipeline import dedup, clusterer, scorer
@@ -143,8 +144,17 @@ async def _run(db: sqlite3.Connection, article: RawArticle) -> ArticleResult:
         )
         return ArticleResult(Outcome.NOISE, article.source_name, short, score=pre.score)
 
-    # ── step 3: cluster ───────────────────────────────────────────────────
-    cluster_result = clusterer.find_or_create(db, article, market_score=pre.score)
+    # ── steps 3+4: cluster + record (atomic) ─────────────────────────────
+    # Both writes go into one transaction so a crash between them can't
+    # leave a cluster row without a matching seen_articles row.
+    try:
+        cluster_result = clusterer.find_or_create(db, article, market_score=pre.score, commit=False)
+        dedup.record(db, article, cluster_id=cluster_result.cluster_id, commit=False)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
     metrics.inc(
         metrics.CLUSTERS_CREATED if cluster_result.is_new else metrics.CLUSTERS_UPDATED
     )
@@ -158,9 +168,6 @@ async def _run(db: sqlite3.Connection, article: RawArticle) -> ArticleResult:
             "containment": round(cluster_result.score, 2),
         },
     )
-
-    # ── step 4: persist article with cluster_id ───────────────────────────
-    dedup.record(db, article, cluster_id=cluster_result.cluster_id)
     metrics.inc(metrics.ARTICLES_PROCESSED)
     logger.debug(
         "article seen",
@@ -173,7 +180,10 @@ async def _run(db: sqlite3.Connection, article: RawArticle) -> ArticleResult:
     )
 
     # ── step 5 + 6: reload cluster, rescore with real source_count ────────
-    cluster      = queries.get_cluster(db, cluster_result.cluster_id)
+    cluster = queries.get_cluster(db, cluster_result.cluster_id)
+    if cluster is None:
+        # Should never happen — we just committed the cluster above.
+        raise RuntimeError(f"cluster {cluster_result.cluster_id} vanished after commit")
     score_result = scorer.compute_score(
         article.title,
         source_count=cluster["source_count"],
@@ -199,14 +209,16 @@ async def _run(db: sqlite3.Connection, article: RawArticle) -> ArticleResult:
             score=score_result.score, cluster_id=cluster["id"],
         )
 
-    # ── step 8: send ──────────────────────────────────────────────────────
+    # ── step 8: AI analysis (best-effort, never blocks publish) ──────────────
+    ai = await analyzer.analyze(article.title, article.content)
+
+    # ── step 9: send ──────────────────────────────────────────────────────────
     ok = await tg.send(
         db=db,
         cluster=cluster,
         score_result=score_result,
         pub_decision=pub,
-        article_url=article.url,
-        source_name=article.source_name,
+        ai_analysis=ai,
     )
 
     if ok:

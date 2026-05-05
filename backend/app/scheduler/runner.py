@@ -8,7 +8,7 @@ start() / stop() are called from main.py startup/shutdown hooks.
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.scheduler.jobs import poll_job, cleanup_job
+from app.scheduler.jobs import poll_job, cleanup_job, backup_job
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +31,15 @@ def start() -> None:
         id="cleanup",
         max_instances=1,
     )
+    _scheduler.add_job(
+        backup_job,
+        trigger="interval",
+        hours=6,
+        id="backup",
+        max_instances=1,
+    )
     _scheduler.start()
-    logger.info("Scheduler started (poll=60s, cleanup=24h)")
+    logger.info("Scheduler started (poll=60s, cleanup=24h, backup=6h)")
 
 
 def stop() -> None:

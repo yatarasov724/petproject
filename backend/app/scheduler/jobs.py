@@ -3,6 +3,7 @@ Scheduler job definitions.
 
 poll_job    — runs every 60 s, drives the full pipeline
 cleanup_job — runs every 24 h, purges stale DB rows
+backup_job  — runs every 6 h, hot-backup of the SQLite DB (keeps last 10)
 
 Each job:
   - opens its own DB connection (one per job run, not per article)
@@ -18,7 +19,7 @@ from app.core import metrics
 from app.db.database import get_db
 from app.db import queries
 from app.pipeline.fetcher import fetch_all
-from app.pipeline.orchestrator import process, Outcome
+from app.pipeline.orchestrator import process
 
 logger = logging.getLogger(__name__)
 
@@ -73,3 +74,19 @@ def cleanup_job() -> None:
         logger.exception("cleanup_job crashed")
     finally:
         db.close()
+
+
+def backup_job() -> None:
+    """
+    Hot-backup the SQLite DB every 6 h. Keeps the last 10 backups.
+    Uses sqlite3.Connection.backup() — safe while the service is live.
+    """
+    try:
+        from scripts.backup_db import backup, _DEFAULT_DB, _BACKUP_DIR
+        dest = backup(db_path=_DEFAULT_DB, backup_dir=_BACKUP_DIR, max_keep=10)
+        logger.info(
+            "db backup complete",
+            extra={"event": "db_backup_complete", "file": dest.name},
+        )
+    except Exception:
+        logger.exception("backup_job crashed")

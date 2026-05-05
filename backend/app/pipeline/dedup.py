@@ -79,7 +79,7 @@ def check(db: sqlite3.Connection, article: RawArticle) -> DedupResult:
     recent_tokens = queries.get_recent_title_tokens(
         db, within_hours=NEAR_DEDUP_WINDOW_HOURS
     )
-    best_score, best_match = _best_jaccard(article.title_tokens, recent_tokens)
+    best_score, _ = _best_jaccard(article.title_tokens, recent_tokens)
 
     if best_score >= JACCARD_THRESHOLD:
         logger.debug(
@@ -97,12 +97,17 @@ def record(
     db: sqlite3.Connection,
     article: RawArticle,
     cluster_id: int | None = None,
+    *,
+    commit: bool = True,
 ) -> int | None:
     """
     Persist article to seen_articles. Call this only for non-duplicates.
     Returns the new rowid, or None if the insert was silently ignored
     (race condition: another process inserted the same hash between our
     check and this insert — safe to discard).
+
+    commit=False: skip db.commit() so the caller can batch this with
+    clusterer.find_or_create() into one atomic transaction.
     """
     return queries.insert_seen_article(
         db,
@@ -112,6 +117,7 @@ def record(
         url=article.url,
         published_at=article.published_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
         cluster_id=cluster_id,
+        commit=commit,
     )
 
 

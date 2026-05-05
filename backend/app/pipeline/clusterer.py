@@ -66,7 +66,7 @@ logger = logging.getLogger(__name__)
 
 # ── configuration ─────────────────────────────────────────────────────────────
 
-CLUSTER_WINDOW_HOURS = 4    # how far back we look for candidate clusters
+CLUSTER_WINDOW_HOURS = 24   # how far back we look for candidate clusters
 MATCH_THRESHOLD      = 0.50 # minimum containment score to join a cluster
 MIN_SHARED_TOKENS    = 2    # minimum overlapping tokens (guards against 1-token matches)
 MAX_KEYWORDS         = 12   # how many tokens to keep in the keywords union
@@ -87,6 +87,8 @@ def find_or_create(
     db: sqlite3.Connection,
     article: RawArticle,
     market_score: int = 0,
+    *,
+    commit: bool = True,
 ) -> ClusterResult:
     """
     Main entry point.
@@ -94,18 +96,20 @@ def find_or_create(
     Finds the best matching open cluster or creates a new one.
     Does NOT write to seen_articles — that is the caller's responsibility.
     Returns ClusterResult with the cluster_id and whether it was newly created.
+
+    commit=False: skip individual db.commit() calls so the caller can batch
+    this write with dedup.record() into one atomic transaction.
     """
     article_token_set = set(article.title_tokens.split())
 
     if len(article_token_set) < MIN_SHARED_TOKENS:
-        # Article has too few tokens to cluster reliably → always new cluster
         logger.debug(
             "[%s] too few tokens (%d) for clustering, creating new cluster: %.60s",
             article.source_name,
             len(article_token_set),
             article.title,
         )
-        cluster_id = _create_new_cluster(db, article, market_score)
+        cluster_id = _create_new_cluster(db, article, market_score, commit=commit)
         return ClusterResult(cluster_id=cluster_id, is_new=True, score=0.0)
 
     candidates = queries.find_candidate_clusters(db, within_hours=CLUSTER_WINDOW_HOURS)
@@ -113,7 +117,11 @@ def find_or_create(
 
     if best_cluster_id is not None:
         cluster = queries.get_cluster(db, best_cluster_id)
-        _update_existing_cluster(db, cluster, article, article_token_set, market_score)
+        if cluster is None:
+            # Cluster was deleted between find and get (e.g. concurrent cleanup) — treat as new
+            cluster_id = _create_new_cluster(db, article, market_score, commit=commit)
+            return ClusterResult(cluster_id=cluster_id, is_new=True, score=0.0)
+        _update_existing_cluster(db, cluster, article, article_token_set, market_score, commit=commit)
         logger.debug(
             "[%s] joined cluster #%d (containment=%.2f): %.60s",
             article.source_name,
@@ -123,7 +131,7 @@ def find_or_create(
         )
         return ClusterResult(cluster_id=best_cluster_id, is_new=False, score=best_score)
 
-    cluster_id = _create_new_cluster(db, article, market_score)
+    cluster_id = _create_new_cluster(db, article, market_score, commit=commit)
     logger.info(
         "[%s] new cluster #%d: %.60s",
         article.source_name,
@@ -167,6 +175,8 @@ def _create_new_cluster(
     db: sqlite3.Connection,
     article: RawArticle,
     market_score: int,
+    *,
+    commit: bool = True,
 ) -> int:
     keywords = _top_keywords(article.title_tokens)
     return queries.create_cluster(
@@ -175,6 +185,7 @@ def _create_new_cluster(
         title_tokens=article.title_tokens,
         keywords=keywords,
         score=market_score,
+        commit=commit,
     )
 
 
@@ -184,11 +195,12 @@ def _update_existing_cluster(
     article: RawArticle,
     article_token_set: set[str],
     market_score: int,
+    *,
+    commit: bool = True,
 ) -> None:
     existing_sources = queries.get_cluster_source_ids(db, cluster["id"])
     is_new_source    = article.source_id not in existing_sources
 
-    # Merge keywords: union of existing + new article tokens, capped at MAX_KEYWORDS
     existing_kw_set  = set(cluster["keywords"].split()) if cluster["keywords"] else set()
     merged_keywords  = _top_keywords(
         " ".join(sorted(existing_kw_set | article_token_set))
@@ -200,6 +212,7 @@ def _update_existing_cluster(
         score=market_score,
         new_source=is_new_source,
         merged_keywords=merged_keywords,
+        commit=commit,
     )
 
 

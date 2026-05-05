@@ -164,6 +164,8 @@ def insert_seen_article(
     url: Optional[str],
     published_at: str,
     cluster_id: Optional[int] = None,
+    *,
+    commit: bool = True,
 ) -> Optional[int]:
     """INSERT OR IGNORE — idempotent on restart. Returns rowid or None if duplicate."""
     cur = db.execute(
@@ -174,7 +176,8 @@ def insert_seen_article(
         """,
         (source_id, raw_hash, title_tokens, url, published_at, cluster_id),
     )
-    db.commit()
+    if commit:
+        db.commit()
     return cur.lastrowid if cur.rowcount else None
 
 
@@ -232,6 +235,8 @@ def create_cluster(
     title_tokens: str,
     keywords: str,
     score: int,
+    *,
+    commit: bool = True,
 ) -> int:
     cur = db.execute(
         """
@@ -241,7 +246,9 @@ def create_cluster(
         """,
         (canonical_title, title_tokens, keywords, score),
     )
-    db.commit()
+    if commit:
+        db.commit()
+    assert cur.lastrowid is not None  # INSERT without OR IGNORE always sets lastrowid
     return cur.lastrowid
 
 
@@ -251,6 +258,8 @@ def update_cluster(
     score: int,
     new_source: bool,
     merged_keywords: str,
+    *,
+    commit: bool = True,
 ) -> None:
     """
     new_source=True → increment source_count.
@@ -269,7 +278,8 @@ def update_cluster(
         """,
         (1 if new_source else 0, score, merged_keywords, _utcnow_iso(), cluster_id),
     )
-    db.commit()
+    if commit:
+        db.commit()
 
 
 def mark_cluster_sent(

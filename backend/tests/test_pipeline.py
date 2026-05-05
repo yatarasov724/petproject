@@ -269,3 +269,92 @@ class TestOrchestrator:
             result = await process(db, article)
 
         assert result.outcome == Outcome.ERROR
+
+
+# ── MVP-4: atomic cluster + dedup transaction ─────────────────────────────────
+
+class TestAtomicClusterDedup:
+    """
+    Verify that clusterer.find_or_create() and dedup.record() are committed
+    atomically: either both land in the DB or neither does.
+    """
+
+    @pytest.mark.asyncio
+    async def test_success_writes_cluster_and_seen_article(self, db):
+        """Happy path: after process() both tables have exactly one row."""
+        article = make_article(
+            title="ЦБ повысил ключевую ставку до 21 процента",
+            raw_hash="atomic_ok_001",
+        )
+        with patch("app.telegram.client.send", return_value=True):
+            result = await process(db, article)
+
+        assert result.outcome == Outcome.SENT_NEW
+
+        cluster_count = db.execute("SELECT COUNT(*) FROM event_clusters").fetchone()[0]
+        seen_count    = db.execute("SELECT COUNT(*) FROM seen_articles").fetchone()[0]
+        assert cluster_count == 1
+        assert seen_count == 1
+
+        seen = db.execute("SELECT cluster_id FROM seen_articles LIMIT 1").fetchone()
+        cluster = db.execute("SELECT id FROM event_clusters LIMIT 1").fetchone()
+        assert seen["cluster_id"] == cluster["id"]
+
+    @pytest.mark.asyncio
+    async def test_rollback_on_dedup_record_failure(self, db):
+        """
+        If dedup.record() raises after clusterer.find_or_create() succeeds,
+        the transaction is rolled back: no cluster row and no seen_article row.
+        """
+        article = make_article(
+            title="ЦБ повысил ключевую ставку до 21 процента",
+            raw_hash="atomic_fail_001",
+        )
+
+        with patch(
+            "app.pipeline.dedup.record",
+            side_effect=RuntimeError("simulated dedup.record crash"),
+        ):
+            result = await process(db, article)
+
+        assert result.outcome == Outcome.ERROR
+
+        cluster_count = db.execute("SELECT COUNT(*) FROM event_clusters").fetchone()[0]
+        seen_count    = db.execute("SELECT COUNT(*) FROM seen_articles").fetchone()[0]
+        assert cluster_count == 0, "cluster must be rolled back on dedup failure"
+        assert seen_count == 0,    "seen_article must not exist after rollback"
+
+    @pytest.mark.asyncio
+    async def test_seen_article_has_correct_cluster_id(self, db):
+        """seen_articles.cluster_id must point to the correct event_clusters row."""
+        article = make_article(
+            title="Газпром объявил дивиденды за 2025 год",
+            raw_hash="atomic_cid_001",
+        )
+        with patch("app.telegram.client.send", return_value=True):
+            await process(db, article)
+
+        row = db.execute(
+            "SELECT sa.cluster_id, ec.id "
+            "FROM seen_articles sa "
+            "JOIN event_clusters ec ON sa.cluster_id = ec.id"
+        ).fetchone()
+        assert row is not None, "seen_article must be linked to a cluster"
+
+    @pytest.mark.asyncio
+    async def test_idempotent_second_call_returns_exact_dup(self, db):
+        """
+        Processing the same article twice (simulating a restart) must return
+        EXACT_DUP on the second call — the first call's seen_article row
+        survived the commit and blocks the duplicate.
+        """
+        article = make_article(
+            title="ЦБ повысил ключевую ставку до 21 процента",
+            raw_hash="atomic_idem_001",
+        )
+        with patch("app.telegram.client.send", return_value=True):
+            first = await process(db, article)
+        assert first.outcome == Outcome.SENT_NEW
+
+        second = await process(db, article)
+        assert second.outcome == Outcome.EXACT_DUP
