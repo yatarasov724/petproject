@@ -242,7 +242,7 @@ class TestOrchestrator:
             title="ЦБ повысил ключевую ставку до 21 процента",
             raw_hash="orch_pub_001",
         )
-        with patch("app.telegram.client.send", return_value=True) as mock_send:
+        with patch("app.telegram.client.send", return_value=1) as mock_send:
             result = await process(db, article)
 
         assert result.outcome == Outcome.SENT_NEW
@@ -254,7 +254,7 @@ class TestOrchestrator:
             title="ЦБ повысил ключевую ставку до 21 процента",
             raw_hash="orch_fail_001",
         )
-        with patch("app.telegram.client.send", return_value=False):
+        with patch("app.telegram.client.send", return_value=None):
             result = await process(db, article)
 
         assert result.outcome == Outcome.SEND_FAIL
@@ -286,7 +286,7 @@ class TestAtomicClusterDedup:
             title="ЦБ повысил ключевую ставку до 21 процента",
             raw_hash="atomic_ok_001",
         )
-        with patch("app.telegram.client.send", return_value=True):
+        with patch("app.telegram.client.send", return_value=1):
             result = await process(db, article)
 
         assert result.outcome == Outcome.SENT_NEW
@@ -331,7 +331,7 @@ class TestAtomicClusterDedup:
             title="Газпром объявил дивиденды за 2025 год",
             raw_hash="atomic_cid_001",
         )
-        with patch("app.telegram.client.send", return_value=True):
+        with patch("app.telegram.client.send", return_value=1):
             await process(db, article)
 
         row = db.execute(
@@ -352,9 +352,120 @@ class TestAtomicClusterDedup:
             title="ЦБ повысил ключевую ставку до 21 процента",
             raw_hash="atomic_idem_001",
         )
-        with patch("app.telegram.client.send", return_value=True):
+        with (
+            patch("app.telegram.client.send", return_value=1),
+            patch("app.ai.analyzer.analyze"),         # prevent real HTTP in background task
+        ):
             first = await process(db, article)
         assert first.outcome == Outcome.SENT_NEW
 
         second = await process(db, article)
         assert second.outcome == Outcome.EXACT_DUP
+
+
+# ── MVP-3: AI fire-and-forget ─────────────────────────────────────────────────
+
+class TestAIFireAndForget:
+    """
+    Verify that AI analysis no longer blocks the publish path.
+    tg.send() must be called with ai_analysis=None, and AI errors must not
+    affect the pipeline outcome.
+    """
+
+    @pytest.mark.asyncio
+    async def test_send_receives_no_ai_analysis(self, db):
+        """tg.send is called with ai_analysis=None — fire-and-forget confirmed."""
+        article = make_article(
+            title="ЦБ повысил ключевую ставку до 21 процента",
+            raw_hash="ff_send_001",
+        )
+
+        captured: list = []
+
+        async def capture_send(**kwargs):
+            captured.append(kwargs.get("ai_analysis"))
+            return 1
+
+        with patch("app.telegram.client.send", side_effect=capture_send):
+            result = await process(db, article)
+
+        assert result.outcome == Outcome.SENT_NEW
+        assert captured == [None], "send must be called with ai_analysis=None"
+
+    @pytest.mark.asyncio
+    async def test_slow_ai_does_not_delay_send(self, db):
+        """
+        process() must complete without waiting for a slow AI response.
+        We use a cooperative signal: AI blocks until send() fires,
+        which proves send happens first (otherwise deadlock → timeout).
+        """
+        import asyncio as _asyncio
+
+        send_fired = _asyncio.Event()
+
+        async def slow_ai(title, text=""):
+            await send_fired.wait()   # unblocked only after send() runs
+            return None
+
+        async def signalling_send(**kwargs):
+            send_fired.set()          # notify AI it can finish
+            return 1
+
+        article = make_article(
+            title="ЦБ повысил ключевую ставку до 21 процента",
+            raw_hash="ff_slow_001",
+        )
+
+        with (
+            patch("app.ai.analyzer.analyze", side_effect=slow_ai),
+            patch("app.telegram.client.send", side_effect=signalling_send),
+            patch("app.telegram.client.edit_message"),
+        ):
+            result = await _asyncio.wait_for(process(db, article), timeout=5.0)
+            # Drain background tasks: ai_task + _enrich_with_ai need a few iterations
+            for _ in range(5):
+                await _asyncio.sleep(0)
+
+        assert result.outcome == Outcome.SENT_NEW
+
+    @pytest.mark.asyncio
+    async def test_ai_error_does_not_affect_outcome(self, db):
+        """If AI raises, the message is still sent and outcome is SENT_NEW."""
+        async def failing_ai(title, text=""):
+            raise RuntimeError("OpenRouter unreachable")
+
+        article = make_article(
+            title="ЦБ повысил ключевую ставку до 21 процента",
+            raw_hash="ff_aierr_001",
+        )
+
+        with (
+            patch("app.ai.analyzer.analyze", side_effect=failing_ai),
+            patch("app.telegram.client.send", return_value=1),
+            patch("app.telegram.client.edit_message"),
+        ):
+            result = await process(db, article)
+
+        assert result.outcome == Outcome.SENT_NEW
+
+    @pytest.mark.asyncio
+    async def test_send_failure_does_not_launch_enrich_task(self, db):
+        """When tg.send fails (returns None), edit_message must not be called."""
+        edit_calls: list = []
+
+        async def record_edit(msg_id, text):
+            edit_calls.append(msg_id)
+
+        article = make_article(
+            title="ЦБ повысил ключевую ставку до 21 процента",
+            raw_hash="ff_sendfail_001",
+        )
+
+        with (
+            patch("app.telegram.client.send", return_value=None),
+            patch("app.telegram.client.edit_message", side_effect=record_edit),
+        ):
+            result = await process(db, article)
+
+        assert result.outcome == Outcome.SEND_FAIL
+        assert edit_calls == [], "edit_message must not be called when send fails"

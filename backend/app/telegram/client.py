@@ -33,6 +33,7 @@ from app.telegram.formatter import format_message
 logger = logging.getLogger(__name__)
 
 _BASE_URL          = "https://api.telegram.org/bot{token}/sendMessage"
+_EDIT_URL          = "https://api.telegram.org/bot{token}/editMessageText"
 _TIMEOUT           = aiohttp.ClientTimeout(total=10)
 _MAX_RETRIES       = 3
 _RETRY_BASE_S      = 2    # backoff: 2s → 4s → 8s
@@ -47,11 +48,15 @@ async def send(
     score_result: ScoreResult,
     pub_decision: PublishDecision,
     ai_analysis: Optional[AIAnalysis] = None,
-) -> bool:
+) -> Optional[int]:
     """
     Format and send a message to the Telegram channel.
     Always writes to telegram_sends (including in DRY_RUN).
-    Returns True on success (or in DRY_RUN mode).
+
+    Returns:
+      positive int  — Telegram message_id on success
+      0             — DRY_RUN (logical success, no real message_id)
+      None          — send failed
     """
     text = format_message(
         cluster=cluster,
@@ -94,7 +99,7 @@ async def send(
             error_text="dry_run",
         )
         metrics.inc(metrics.TG_SENT_OK)
-        return True
+        return 0  # DRY_RUN: no real message_id
 
     logger.info(
         "sending %s cluster=#%d score=%d sources=%d type=%s",
@@ -143,7 +148,33 @@ async def send(
         error_text=error_text,
     )
 
-    return ok
+    return tg_message_id  # int on success, None on failure
+
+
+async def edit_message(msg_id: int, text: str) -> None:
+    """
+    Edit a previously sent Telegram message with updated content.
+    Fire-and-forget safe: logs failures, never raises.
+    """
+    url = _EDIT_URL.format(token=settings.telegram_bot_token)
+    payload = {
+        "chat_id":                  settings.telegram_channel_id,
+        "message_id":               msg_id,
+        "text":                     text,
+        "parse_mode":               "MarkdownV2",
+        "disable_web_page_preview": True,
+    }
+    try:
+        async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+            async with session.post(url, json=payload) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    logger.warning(
+                        "edit_message %d failed (msg_id=%d): %.200s",
+                        resp.status, msg_id, body,
+                    )
+    except Exception:
+        logger.warning("edit_message exception for msg_id=%d", msg_id, exc_info=True)
 
 
 # ── internals ─────────────────────────────────────────────────────────────────

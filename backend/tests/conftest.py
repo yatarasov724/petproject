@@ -13,10 +13,22 @@ import hashlib
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from app.pipeline.normalizer import RawArticle
+
+
+@pytest.fixture(autouse=True)
+def _no_real_ai():
+    """
+    Prevent background OpenRouter HTTP calls in every test by default.
+    Tests that explicitly patch analyzer.analyze override this fixture's mock
+    for the duration of their own patch context.
+    """
+    with patch("app.ai.analyzer.analyze"):
+        yield
 
 _SCHEMA_PATH = Path(__file__).parent.parent / "app" / "db" / "schema.sql"
 
