@@ -16,12 +16,16 @@ import logging
 from collections import Counter
 
 from app.core import metrics
+from app.core.alerting import send_ops as _send_ops
 from app.db.database import get_db
 from app.db import queries
 from app.pipeline.fetcher import fetch_all
 from app.pipeline.orchestrator import process
 
 logger = logging.getLogger(__name__)
+
+# Dead-source IDs we've already alerted about — reset on service restart.
+_alerted_dead: set[int] = set()
 
 
 async def poll_job() -> None:
@@ -72,6 +76,61 @@ def cleanup_job() -> None:
         )
     except Exception:
         logger.exception("cleanup_job crashed")
+    finally:
+        db.close()
+
+
+async def heartbeat_job() -> None:
+    """
+    Send a compact status line to the ops chat every 5 minutes.
+    Also fires a one-time alert for each source that has become dead.
+    No-ops if TELEGRAM_OPS_CHAT_ID is not configured.
+    """
+    global _alerted_dead
+
+    db = get_db()
+    try:
+        stats     = queries.get_source_stats(db)
+        ok_n      = stats.get("ok", 0)
+        backoff_n = stats.get("backoff", 0)
+        dead_n    = stats.get("dead", 0)
+        total_n   = ok_n + backoff_n + dead_n
+
+        uptime_s       = metrics.uptime_seconds()
+        hours, rem     = divmod(uptime_s, 3600)
+        minutes        = rem // 60
+
+        header = "🚨" if dead_n else "✅"
+
+        source_parts = [f"{ok_n}/{total_n} ok"]
+        if backoff_n:
+            source_parts.append(f"{backoff_n} backoff")
+        if dead_n:
+            source_parts.append(f"{dead_n} DEAD ⚠")
+
+        tg_ok   = metrics.get(metrics.TG_SENT_OK)
+        tg_fail = metrics.get(metrics.TG_SENT_FAIL)
+
+        text = (
+            f"{header} MOEX parser — alive\n"
+            f"⏱ uptime: {hours}h {minutes}m\n"
+            f"📡 sources: {' · '.join(source_parts)}\n"
+            f"📊 published: {tg_ok} total · {tg_fail} failed"
+        )
+        await _send_ops(text)
+
+        # One-time alert per dead source (resets on service restart).
+        dead_sources = queries.get_dead_sources(db)
+        for src in dead_sources:
+            if src["id"] not in _alerted_dead:
+                await _send_ops(
+                    f"🚨 Source DEAD: {src['name']} ({src['error_count']} errors)\n"
+                    f"URL: {src['url']}"
+                )
+                _alerted_dead.add(src["id"])
+
+    except Exception:
+        logger.exception("heartbeat_job crashed")
     finally:
         db.close()
 

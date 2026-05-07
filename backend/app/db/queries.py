@@ -430,6 +430,23 @@ def log_send(
     db.commit()
 
 
+# ── monitoring ────────────────────────────────────────────────────────────────
+
+def get_source_stats(db: sqlite3.Connection) -> dict[str, int]:
+    """Return counts of enabled sources grouped by status: ok / backoff / dead."""
+    rows = db.execute(
+        "SELECT status, COUNT(*) AS n FROM rss_sources WHERE enabled = 1 GROUP BY status"
+    ).fetchall()
+    return {r["status"]: r["n"] for r in rows}
+
+
+def get_dead_sources(db: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Return all enabled sources currently marked dead."""
+    return db.execute(
+        "SELECT id, name, url, error_count FROM rss_sources WHERE status = 'dead' AND enabled = 1"
+    ).fetchall()
+
+
 # ── admin: rss_sources CRUD ───────────────────────────────────────────────────
 
 def get_all_sources(db: sqlite3.Connection) -> list[sqlite3.Row]:

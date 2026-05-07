@@ -41,6 +41,10 @@ def snapshot() -> dict[str, int]:
     return dict(_counts)
 
 
+def uptime_seconds() -> int:
+    return int((datetime.now(timezone.utc) - _process_start).total_seconds())
+
+
 def log_snapshot(poll_stats: dict[str, int] | None = None) -> None:
     """
     Emit current counter totals as a structured log line.

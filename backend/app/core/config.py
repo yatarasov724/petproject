@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     # Useful to verify ingestion/clustering/scoring without hitting the channel.
     dry_run:       bool = False
 
+    # ── ops / monitoring ──────────────────────────────────────────────────────
+    # If set, heartbeat and dead-source alerts are sent to this chat/channel.
+    # Leave empty to disable all ops alerting.
+    telegram_ops_chat_id: str = ""
+
     # ── AI analysis ───────────────────────────────────────────────────────────
     openrouter_api_key: str = ""
 
