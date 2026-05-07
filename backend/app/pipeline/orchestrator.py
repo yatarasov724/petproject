@@ -21,14 +21,17 @@ Sequence for each article
   6b. dup guard             — check telegram_sends to prevent same-cluster retries
                               and cross-cluster near-dup publishes
   7. publish_decision.decide() — NEW_EVENT / UPDATE / SILENCE
-  8. tg.send()              — send to Telegram (if not SILENCE)
+  8. analyzer.analyze()     — AI market relevance gate (awaited); если API ключ не задан
+                              или AI недоступен — пропускаем гейт; если AI вернул
+                              пустой affects (нет влияния на рынок) → SILENCE
+  9. tg.send()              — send to Telegram with AI analysis included (if not SILENCE)
 """
 
-import asyncio
 import logging
 import sqlite3
 from dataclasses import dataclass
 from enum import Enum
+from typing import Optional
 
 from datetime import datetime, timezone, timedelta
 
@@ -39,7 +42,6 @@ from app.pipeline import dedup, clusterer, scorer
 from app.pipeline.normalizer import RawArticle
 from app.pipeline.publish_decision import decide, Decision, COOLDOWN_HOURS
 from app.telegram import client as tg
-from app.telegram.formatter import format_message
 
 # Articles older than this are skipped before entering the pipeline.
 # Prevents publishing stale RSS entries that appeared late in the feed.
@@ -255,22 +257,42 @@ async def _run(db: sqlite3.Connection, article: RawArticle) -> ArticleResult:
             score=score_result.score, cluster_id=cluster["id"],
         )
 
-    # ── step 8: fire AI analysis in the background (non-blocking) ───────────
-    # Only create the task when an API key is configured; otherwise AI is a no-op
-    # and there is no point scheduling a task that will return None immediately.
+    # ── step 8: AI market relevance gate ─────────────────────────────────────
+    # Ждём AI до отправки — используем как гейт качества и для обогащения сообщения.
+    # Если ключ не задан или AI упал → None → гейт пропускается.
+    # Если AI вернул пустой affects → нет влияния на рынок → SILENCE.
     from app.core.config import settings as _settings
-    ai_task: "asyncio.Task | None" = (
-        asyncio.create_task(analyzer.analyze(article.title, article.content))
-        if _settings.openrouter_api_key else None
-    )
+    ai_analysis: Optional[analyzer.AIAnalysis] = None
+    if _settings.openrouter_api_key:
+        try:
+            ai_analysis = await analyzer.analyze(article.title, article.content)
+        except Exception:
+            logger.warning("AI analyze() raised unexpectedly — skipping gate", exc_info=True)
+            ai_analysis = None
+        if ai_analysis is not None and not ai_analysis.affects:
+            metrics.inc(metrics.EVENTS_SILENCED)
+            logger.info(
+                "AI gate: no market impact — cluster #%d silenced",
+                cluster["id"],
+                extra={
+                    "event":      "ai_gate_silence",
+                    "cluster_id": cluster["id"],
+                    "source":     article.source_name,
+                    "title":      short,
+                },
+            )
+            return ArticleResult(
+                Outcome.SILENCE, article.source_name, short,
+                score=score_result.score, cluster_id=cluster["id"],
+            )
 
-    # ── step 9: send immediately — no AI yet ──────────────────────────────────
+    # ── step 9: send with AI analysis already included ────────────────────────
     msg_id = await tg.send(
         db=db,
         cluster=cluster,
         score_result=score_result,
         pub_decision=pub,
-        ai_analysis=None,
+        ai_analysis=ai_analysis,
     )
     ok = msg_id is not None
 
@@ -288,18 +310,9 @@ async def _run(db: sqlite3.Connection, article: RawArticle) -> ArticleResult:
                 "sources":    cluster["source_count"],
                 "source":     article.source_name,
                 "title":      short,
+                "ai":         ai_analysis is not None,
             },
         )
-    # TG_SENT_OK / TG_SENT_FAIL are tracked inside tg.send() — not duplicated here
-
-    # ── step 10: schedule AI enrichment edit when task completes ─────────────
-    # msg_id is truthy only for real Telegram messages (not DRY_RUN, not failure).
-    if ai_task and msg_id:
-        asyncio.create_task(
-            _enrich_with_ai(ai_task, msg_id, cluster, score_result, pub.decision)
-        )
-    elif ai_task:
-        ai_task.cancel()
 
     outcome = (
         (Outcome.SENT_NEW if pub.decision == Decision.NEW_EVENT else Outcome.SENT_UPDATE)
@@ -309,30 +322,3 @@ async def _run(db: sqlite3.Connection, article: RawArticle) -> ArticleResult:
         outcome, article.source_name, short,
         score=score_result.score, cluster_id=cluster["id"],
     )
-
-
-async def _enrich_with_ai(
-    ai_task: "asyncio.Task[analyzer.Optional[analyzer.AIAnalysis]]",
-    msg_id: int,
-    cluster: sqlite3.Row,
-    score_result: scorer.ScoreResult,
-    decision: Decision,
-) -> None:
-    """
-    Background task: await the AI result and edit the already-sent Telegram message.
-    Never raises — all failures are logged and swallowed.
-    """
-    try:
-        ai = await ai_task
-        if ai is None:
-            return
-        text = format_message(cluster, score_result, decision, ai_analysis=ai)
-        await tg.edit_message(msg_id, text)
-        logger.info(
-            "ai enrichment applied",
-            extra={"event": "ai_enriched", "msg_id": msg_id},
-        )
-    except asyncio.CancelledError:
-        pass
-    except Exception:
-        logger.warning("ai enrichment failed for msg_id=%d", msg_id, exc_info=True)

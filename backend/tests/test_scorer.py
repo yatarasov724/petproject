@@ -67,24 +67,21 @@ class TestTier1:
         result = compute_score("Девальвация рубля объявлена официально")
         assert result.base_score == _TIER1_BASE
 
+    def test_rate_decision_hits_tier1(self):
+        result = compute_score("ЦБ повысил ключевую ставку до 21 процента")
+        assert result.base_score == _TIER1_BASE
+        assert result.tier == "tier1"
+
 
 # ── tier 2 ───────────────────────────────────────────────────────────────────
 
 class TestTier2:
-    def test_key_rate_decision_hits_tier2(self):
-        result = compute_score("ЦБ повысил ключевую ставку до 21 процента")
-        assert result.base_score == _TIER2_BASE
-
     def test_dividends_hits_tier2(self):
         result = compute_score("Газпром объявил о дивидендах за 2023 год")
         assert result.base_score == _TIER2_BASE
 
     def test_net_profit_hits_tier2(self):
         result = compute_score("Сбербанк отчитался о рекордной чистой прибыли за квартал")
-        assert result.base_score == _TIER2_BASE
-
-    def test_moex_company_name_hits_tier2(self):
-        result = compute_score("Лукойл готовится к крупной сделке поглощения")
         assert result.base_score == _TIER2_BASE
 
 
@@ -98,6 +95,11 @@ class TestTier3:
 
     def test_budget_deficit_hits_tier3(self):
         result = compute_score("Минфин сообщил о дефиците бюджета в первом квартале")
+        assert result.base_score == _TIER3_BASE
+
+    def test_moex_company_name_hits_tier3(self):
+        # Company name alone (no Tier1/Tier2 financial keywords) → Tier3
+        result = compute_score("Лукойл арендовал склад в Подмосковье")
         assert result.base_score == _TIER3_BASE
 
 
