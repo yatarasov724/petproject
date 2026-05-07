@@ -51,12 +51,11 @@ _SYSTEM_PROMPT = """\
 3. СТАТУС (ЭМОДЗИ)
 🟢 — позитив
 🔴 — негатив
-⚪️ — нейтрально
 
 Логика:
-Позитив — рост экономики, смягчение ЦБ, рост сырья, снижение рисков
-Негатив — санкции, ужесточение, падение рынков, эскалация
-Нейтрально — слабое или смешанное влияние
+Позитив — рост экономики, смягчение ЦБ, рост сырья, снижение рисков, деэскалация
+Негатив — санкции, ужесточение, падение рынков, эскалация, неопределённость
+Нейтральных оценок нет — всегда выбирай преобладающее направление
 
 ---
 
@@ -91,8 +90,8 @@ forex → валюты
 Отвечай СТРОГО JSON, без пояснений:
 {
   "title": "короткий заголовок (~8 слов, без точки, без кавычек)",
-  "impact": "positive | negative | neutral",
-  "emoji": "🟢 | 🔴 | ⚪️",
+  "impact": "positive | negative",
+  "emoji": "🟢 | 🔴",
   "summary": "1 предложение — что произошло (не повторяет заголовок)",
   "market_effect": "прямой эффект на рынок (1 предложение)",
   "affects": "акции · рубль · ОФЗ · сырьё"
@@ -101,15 +100,15 @@ forex → валюты
 
 _USER_TEMPLATE = "Заголовок: {title}\nТекст: {text}"
 
-_VALID_IMPACTS = frozenset({"positive", "negative", "neutral"})
-_VALID_EMOJIS  = frozenset({"🟢", "🔴", "⚪️"})
+_VALID_IMPACTS = frozenset({"positive", "negative"})
+_VALID_EMOJIS  = frozenset({"🟢", "🔴"})
 
 
 @dataclass(frozen=True)
 class AIAnalysis:
     title:         str
-    impact:        str   # positive | negative | neutral
-    emoji:         str   # 🟢 | 🔴 | ⚪️
+    impact:        str   # positive | negative
+    emoji:         str   # 🟢 | 🔴
     summary:       str
     market_effect: str
     affects:       str   # "акции · рубль · ОФЗ · сырьё"
@@ -172,13 +171,13 @@ def _validate(data: dict) -> Optional[AIAnalysis]:
         if not ai_title or not summary or not market_effect:
             return None
 
-        impact = str(data.get("impact", "neutral")).lower()
-        emoji  = str(data.get("emoji", "⚪️"))
+        impact = str(data.get("impact", "negative")).lower()
+        emoji  = str(data.get("emoji", "🔴"))
 
         if impact not in _VALID_IMPACTS:
-            impact = "neutral"
+            impact = "negative"
         if emoji not in _VALID_EMOJIS:
-            emoji = "⚪️"
+            emoji = "🔴"
 
         return AIAnalysis(
             title=ai_title,
