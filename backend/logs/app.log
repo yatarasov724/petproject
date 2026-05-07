@@ -624,3 +624,20 @@ INFO:     Application startup complete.
 2026-05-07 22:05:05 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1029 raw articles
 2026-05-07 22:05:06 [INFO] app.core.metrics: metrics
 2026-05-07 22:05:06 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 22:06:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 22:06:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 22:06:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 22:06:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 22:06:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 474 articles
+2026-05-07 22:06:05 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 22:06:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 22:06:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 22:06:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 22:06:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 22:06:06 [INFO] app.pipeline.fetcher: [Investing] fetched 10 articles
+2026-05-07 22:06:06 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1039 raw articles
+2026-05-07 22:06:06 [INFO] app.pipeline.clusterer: [Investing] new cluster #963: Eversource Q1 2026: прибыль выше прогноза, но давление регул
+2026-05-07 22:06:06 [INFO] app.pipeline.clusterer: [Investing] new cluster #964: Auren: прибыль от модуляции смягчила падение EBITDA на 23%
+2026-05-07 22:06:06 [INFO] app.pipeline.clusterer: [Investing] new cluster #965: MDA: выручка выросла на 32%, портфель заказов — $40 млрд
+2026-05-07 22:06:06 [INFO] app.core.metrics: metrics
+2026-05-07 22:06:06 [INFO] app.scheduler.jobs: poll complete
