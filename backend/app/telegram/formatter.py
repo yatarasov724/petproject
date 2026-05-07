@@ -111,7 +111,7 @@ def format_message(
 
       Влияет на: акции · рубль · ОФЗ
     """
-    affects = _AFFECTS.get(score_result.event_type, "акции")
+    ticker_line = _format_tickers(cluster["tickers"])
 
     if ai_analysis:
         prefix     = "↻ " if decision == Decision.UPDATE else ""
@@ -121,7 +121,9 @@ def format_message(
             "",
             f"_Для рынка:_ {_esc(ai_analysis.market_effect)}",
         ]
-        if ai_analysis.affects:
+        if ticker_line:
+            parts += ["", ticker_line]
+        elif ai_analysis.affects:
             parts += ["", f"Влияет на: {_esc(ai_analysis.affects)}"]
     else:
         badge = _BADGE.get(score_result.event_type, "РЫНКИ")
@@ -131,11 +133,21 @@ def format_message(
             f"*{_esc(badge)}*",
             "",
             _esc(cluster["canonical_title"]),
-            "",
-            f"Влияет на: {_esc(affects)}",
         ]
+        if ticker_line:
+            parts += ["", ticker_line]
+        else:
+            affects = _AFFECTS.get(score_result.event_type, "акции")
+            parts += ["", f"Влияет на: {_esc(affects)}"]
 
     return "\n".join(parts)
+
+
+def _format_tickers(tickers: Optional[str]) -> str:
+    """Format comma-separated tickers as '$GAZP · $SBER', or empty string."""
+    if not tickers:
+        return ""
+    return " · ".join(f"${t}" for t in tickers.split(",") if t)
 
 
 def _esc(text: str) -> str:

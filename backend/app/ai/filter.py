@@ -47,6 +47,16 @@ def is_relevant(title: str, content: str) -> bool:
     return any(kw in text for kw in MARKET_KEYWORDS)
 
 
+def extract_tickers(title: str) -> list[str]:
+    """Return sorted list of MOEX tickers mentioned in the article title."""
+    text = title.lower()
+    return sorted(
+        ticker
+        for ticker, keywords in TICKER_KEYWORDS.items()
+        if any(kw in text for kw in keywords)
+    )
+
+
 def get_priority(source: str) -> int:
     if source.startswith("TG:"):
         return 1  # Telegram — высший приоритет

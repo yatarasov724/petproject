@@ -59,6 +59,9 @@ CREATE TABLE IF NOT EXISTS event_clusters (
     source_count    INTEGER NOT NULL DEFAULT 1,
     article_count   INTEGER NOT NULL DEFAULT 1,
 
+    -- tickers extracted from article titles (comma-separated, e.g. "GAZP,SBER")
+    tickers         TEXT DEFAULT NULL,
+
     -- publish decision state
     status          TEXT NOT NULL DEFAULT 'new'
         CHECK (status IN ('new', 'published', 'updated', 'silenced')),

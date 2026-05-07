@@ -59,6 +59,7 @@ import logging
 import sqlite3
 from dataclasses import dataclass
 
+from app.ai.filter import extract_tickers
 from app.db import queries
 from app.pipeline.normalizer import RawArticle
 
@@ -179,11 +180,13 @@ def _create_new_cluster(
     commit: bool = True,
 ) -> int:
     keywords = _top_keywords(article.title_tokens)
+    tickers = extract_tickers(article.title)
     return queries.create_cluster(
         db,
         canonical_title=article.title,
         title_tokens=article.title_tokens,
         keywords=keywords,
+        tickers=",".join(tickers),
         score=market_score,
         commit=commit,
     )
@@ -206,12 +209,17 @@ def _update_existing_cluster(
         " ".join(sorted(existing_kw_set | article_token_set))
     )
 
+    existing_tickers = {t for t in (cluster["tickers"] or "").split(",") if t}
+    new_tickers      = set(extract_tickers(article.title))
+    merged_tickers   = ",".join(sorted(existing_tickers | new_tickers))
+
     queries.update_cluster(
         db,
         cluster_id=cluster["id"],
         score=market_score,
         new_source=is_new_source,
         merged_keywords=merged_keywords,
+        merged_tickers=merged_tickers,
         commit=commit,
     )
 

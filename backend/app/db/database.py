@@ -35,6 +35,16 @@ def init_db() -> None:
     conn = get_db()
     try:
         conn.executescript(schema)
+        _migrate(conn)
         logger.info("Database initialized")
     finally:
         conn.close()
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    try:
+        conn.execute("ALTER TABLE event_clusters ADD COLUMN tickers TEXT DEFAULT NULL")
+        conn.commit()
+        logger.info("Migration applied: event_clusters.tickers")
+    except sqlite3.OperationalError:
+        pass  # column already exists

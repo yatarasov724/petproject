@@ -261,16 +261,17 @@ def create_cluster(
     title_tokens: str,
     keywords: str,
     score: int,
+    tickers: str = "",
     *,
     commit: bool = True,
 ) -> int:
     cur = db.execute(
         """
         INSERT INTO event_clusters
-            (canonical_title, title_tokens, keywords, best_score)
-        VALUES (?, ?, ?, ?)
+            (canonical_title, title_tokens, keywords, best_score, tickers)
+        VALUES (?, ?, ?, ?, ?)
         """,
-        (canonical_title, title_tokens, keywords, score),
+        (canonical_title, title_tokens, keywords, score, tickers or None),
     )
     if commit:
         db.commit()
@@ -284,6 +285,7 @@ def update_cluster(
     score: int,
     new_source: bool,
     merged_keywords: str,
+    merged_tickers: str = "",
     *,
     commit: bool = True,
 ) -> None:
@@ -291,6 +293,7 @@ def update_cluster(
     new_source=True → increment source_count.
     Always increments article_count, updates best_score, keywords, last_updated_at.
     merged_keywords is the caller-computed union of existing + new article tokens.
+    merged_tickers is the caller-computed union of tickers across articles.
     """
     db.execute(
         """
@@ -299,10 +302,11 @@ def update_cluster(
                source_count    = source_count + ?,
                best_score      = MAX(best_score, ?),
                keywords        = ?,
+               tickers         = ?,
                last_updated_at = ?
         WHERE  id = ?
         """,
-        (1 if new_source else 0, score, merged_keywords, _utcnow_iso(), cluster_id),
+        (1 if new_source else 0, score, merged_keywords, merged_tickers or None, _utcnow_iso(), cluster_id),
     )
     if commit:
         db.commit()
