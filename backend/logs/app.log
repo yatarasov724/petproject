@@ -1,0 +1,626 @@
+INFO:     Will watch for changes in these directories: ['/Users/aroslavtarasov/Projects/newsparser/backend']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [64561] using WatchFiles
+INFO:     Started server process [64565]
+INFO:     Waiting for application startup.
+2026-05-07 21:31:44 [INFO] app.db.database: Migration applied: event_clusters.tickers
+2026-05-07 21:31:44 [INFO] app.db.database: Database initialized
+2026-05-07 21:31:44 [INFO] app.db.queries: RSS sources seeded (13 entries)
+2026-05-07 21:31:44 [INFO] app.scheduler.runner: Scheduler started (poll=60s, cleanup=24h, backup=6h, heartbeat=5m)
+2026-05-07 21:31:44 [INFO] app.main: app started
+INFO:     Application startup complete.
+2026-05-07 21:32:44 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:32:44 [INFO] app.pipeline.fetcher: [Lenta] fetched 3 articles
+2026-05-07 21:32:45 [INFO] app.pipeline.fetcher: [Vedomosti] fetched 200 articles
+2026-05-07 21:32:45 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:32:45 [INFO] app.pipeline.fetcher: [TASS] fetched 97 articles
+2026-05-07 21:32:45 [INFO] app.pipeline.fetcher: [Izvestia] fetched 475 articles
+2026-05-07 21:32:45 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:32:45 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:32:45 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:32:45 [INFO] app.pipeline.fetcher: [Kommersant] fetched 548 articles
+2026-05-07 21:32:45 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:32:45 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:32:45 [INFO] app.pipeline.fetcher: [Investing] fetched 10 articles
+2026-05-07 21:32:45 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:32:45 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1788 raw articles
+2026-05-07 21:32:45 [INFO] app.pipeline.clusterer: [Interfax] new cluster #895: Глава Евросовета заявил об обсуждении в ЕС темы возможных пе
+2026-05-07 21:32:45 [INFO] app.pipeline.clusterer: [Interfax] new cluster #896: Власти Швеции освободили россиянина, капитана танкера из сан
+2026-05-07 21:32:47 [INFO] app.telegram.client: sending NEW_EVENT cluster=#896 score=65 sources=1 type=SANCTIONS
+2026-05-07 21:32:48 [INFO] app.pipeline.orchestrator: event published
+2026-05-07 21:32:48 [INFO] app.pipeline.clusterer: [Interfax] new cluster #897: ЦБ отметил увеличение финансовых потоков в апреле из-за рост
+2026-05-07 21:32:48 [INFO] app.pipeline.clusterer: [Interfax] new cluster #898: Рынок акций РФ в четверг просел к 2615 пунктам по индексу Мо
+2026-05-07 21:32:48 [INFO] app.pipeline.clusterer: [Interfax] new cluster #899: США в рамках давления на Иран вводят санкции против замминис
+2026-05-07 21:32:52 [INFO] app.telegram.client: sending NEW_EVENT cluster=#899 score=65 sources=1 type=SANCTIONS
+2026-05-07 21:32:52 [INFO] app.pipeline.orchestrator: event published
+2026-05-07 21:32:52 [INFO] app.pipeline.clusterer: [Vedomosti] new cluster #900: США ввели санкции против конгломерата Кубы, контролирующего 
+2026-05-07 21:32:54 [INFO] app.pipeline.orchestrator: AI gate: no market impact — cluster #900 silenced
+2026-05-07 21:32:54 [INFO] app.pipeline.clusterer: [Vedomosti] new cluster #901: Акционеры «Полюса» одобрили финальные дивиденды за 2025 год
+2026-05-07 21:33:00 [INFO] app.telegram.client: sending NEW_EVENT cluster=#901 score=35 sources=1 type=DIVIDENDS
+2026-05-07 21:33:01 [INFO] app.pipeline.orchestrator: event published
+2026-05-07 21:33:01 [INFO] app.pipeline.clusterer: [Vedomosti] new cluster #902: Стоимость Brent упала более чем на 5%
+2026-05-07 21:33:02 [INFO] app.telegram.client: sending NEW_EVENT cluster=#902 score=35 sources=1 type=COMMODITY_SHOCK
+2026-05-07 21:33:02 [INFO] app.pipeline.orchestrator: event published
+2026-05-07 21:33:02 [INFO] app.pipeline.clusterer: [Vedomosti] new cluster #903: Ушаков не ответил, поедет ли Путин на саммит G20
+2026-05-07 21:33:02 [INFO] app.pipeline.clusterer: [Vedomosti] new cluster #904: Акционеры «Группы Позитив» утвердили дивиденды за I квартал
+2026-05-07 21:33:02 [INFO] app.pipeline.clusterer: [Vedomosti] new cluster #905: Выручка «Ростеха» увеличилась на 25% в 2025 году
+2026-05-07 21:33:02 [INFO] app.pipeline.clusterer: [Vedomosti] new cluster #906: ФАС и Минпромторг РФ предложили продавать на бирже 10% алюми
+2026-05-07 21:33:02 [INFO] app.pipeline.clusterer: [Vedomosti] new cluster #907: «Полюс» доразмещает облигации на $60 млн по цене 100,5% от н
+2026-05-07 21:33:02 [INFO] app.pipeline.clusterer: [Vedomosti] new cluster #908: Песков: Россия рассчитывает на услуги доброй воли США в пере
+2026-05-07 21:33:02 [INFO] app.pipeline.clusterer: [Vedomosti] new cluster #909: Комитет ГД одобрил штрафы до 2,5 млн и срок до 5 лет за неза
+2026-05-07 21:33:02 [INFO] app.pipeline.clusterer: [Vedomosti] new cluster #910: Росреестр предупредил дачников о схеме с фейковыми штрафами
+2026-05-07 21:33:02 [INFO] app.pipeline.clusterer: [Vedomosti] new cluster #911: РКН опроверг планы по блокировке The Sims и GTA
+2026-05-07 21:33:04 [INFO] app.pipeline.orchestrator: AI gate: no market impact — cluster #911 silenced
+2026-05-07 21:33:04 [INFO] app.pipeline.clusterer: [Vedomosti] new cluster #912: Выручка МГКЛ выросла в 3,4 раза за четыре месяца
+2026-05-07 21:33:04 [INFO] app.pipeline.clusterer: [Vedomosti] new cluster #913: Цена на Brent превысила $101 после недавнего обвала котирово
+2026-05-07 21:33:06 [INFO] app.telegram.client: sending NEW_EVENT cluster=#913 score=35 sources=1 type=COMMODITY_SHOCK
+2026-05-07 21:33:07 [INFO] app.pipeline.orchestrator: event published
+2026-05-07 21:33:07 [INFO] app.pipeline.clusterer: [Vedomosti] new cluster #914: Трамп заявил о согласии Ирана отказаться от разработки ядерн
+2026-05-07 21:33:07 [INFO] app.pipeline.clusterer: [Kommersant] new cluster #915: МИД России вызвал посла Армении после саммита ЕС
+2026-05-07 21:33:07 [INFO] app.pipeline.clusterer: [Kommersant] new cluster #916: Банк России спрогнозировал инфляцию на уровне 5,9% во втором
+2026-05-07 21:33:07 [INFO] app.pipeline.clusterer: [Kommersant] new cluster #917: CNN уточнил новые правила Ирана прохода через Ормузский прол
+2026-05-07 21:33:07 [INFO] app.pipeline.clusterer: [Kommersant] new cluster #918: Чистая прибыль McDonald's в первом квартале выросла на 6%
+2026-05-07 21:33:07 [INFO] app.pipeline.clusterer: [Kommersant] new cluster #919: ВВП России в первом квартале снизился на 0,5%
+2026-05-07 21:33:07 [INFO] app.pipeline.clusterer: [Kommersant] new cluster #920: РБК: финансовые маркетплейсы пожаловались в ФАС на «Яндекс»
+2026-05-07 21:33:07 [INFO] app.pipeline.clusterer: [Kommersant] new cluster #921: Выручка производителей бытовой техники в России упала на 11,
+2026-05-07 21:33:07 [INFO] app.pipeline.clusterer: [Prime] new cluster #922: Глава МАГАТЭ призвал избегать военных действий у ядерных объ
+2026-05-07 21:33:07 [INFO] app.pipeline.clusterer: [Prime] new cluster #923: BP Plc проведет реорганизацию в июне
+2026-05-07 21:33:07 [INFO] app.pipeline.clusterer: [Prime] new cluster #924: Совет директоров Eni переизбрал Клаудио Дескальци на пост гл
+2026-05-07 21:33:07 [INFO] app.pipeline.clusterer: [Prime] new cluster #925: Слабый рубль больше не нужен: Минфин выключил "красную кнопк
+2026-05-07 21:33:07 [INFO] app.pipeline.clusterer: [Prime] new cluster #926: Минэнерго США хочет вести мониторинг активности Ирана в ядер
+2026-05-07 21:33:07 [INFO] app.pipeline.clusterer: [Prime] new cluster #927: ЦБ: накопленная жесткость ДКУ позволяет продолжить снижение 
+2026-05-07 21:33:16 [INFO] app.telegram.client: sending NEW_EVENT cluster=#927 score=55 sources=1 type=RATE_DECISION
+2026-05-07 21:33:16 [INFO] app.pipeline.orchestrator: event published
+2026-05-07 21:33:16 [INFO] app.pipeline.clusterer: [Prime] new cluster #928: ЦБ: бюджетная политика в 2026 году может не дать дезинфляцио
+2026-05-07 21:33:16 [INFO] app.pipeline.clusterer: [Prime] new cluster #929: Цены на нефть упали на пять процентов
+2026-05-07 21:33:20 [INFO] app.telegram.client: sending NEW_EVENT cluster=#929 score=40 sources=1 type=COMMODITY_SHOCK
+2026-05-07 21:33:20 [INFO] app.pipeline.orchestrator: event published
+2026-05-07 21:33:20 [INFO] app.pipeline.clusterer: [Prime] new cluster #930: "Северсталь" получила патент на конструкцию тоннеля для путе
+2026-05-07 21:33:20 [INFO] app.pipeline.clusterer: [Prime] new cluster #931: Роскомнадзор не нашел оснований для блокировки игр разработч
+2026-05-07 21:33:24 [INFO] app.telegram.client: sending NEW_EVENT cluster=#931 score=50 sources=1 type=UNKNOWN
+2026-05-07 21:33:25 [INFO] app.pipeline.orchestrator: event published
+2026-05-07 21:33:25 [INFO] app.pipeline.clusterer: [BFM] new cluster #932: ФАО: дефицит удобрений из-за блокировки Ормуза приведет к сн
+2026-05-07 21:33:26 [INFO] app.telegram.client: sending NEW_EVENT cluster=#932 score=50 sources=1 type=UNKNOWN
+2026-05-07 21:33:27 [INFO] app.pipeline.orchestrator: event published
+2026-05-07 21:33:27 [INFO] app.pipeline.clusterer: [Izvestia] new cluster #933: «Яндекс» прокомментировал жалобу в ФАС на свой интернет-поис
+2026-05-07 21:33:27 [INFO] app.pipeline.clusterer: [Izvestia] new cluster #934: Ушаков: на переговорах с Пашиняном были расставлены все точк
+2026-05-07 21:33:27 [INFO] app.pipeline.clusterer: [Izvestia] new cluster #935: На УАЗе отчитались о строительстве новой прессовой линии
+2026-05-07 21:33:27 [INFO] app.pipeline.clusterer: [Izvestia] new cluster #936: Ушаков заявил об отсутствии смысла в новом раунде переговоро
+2026-05-07 21:33:27 [INFO] app.pipeline.clusterer: [Izvestia] new cluster #937: Роскомнадзор в апреле заблокировал почти 8 тыс. фишинговых р
+2026-05-07 21:33:30 [INFO] app.pipeline.orchestrator: AI gate: no market impact — cluster #937 silenced
+2026-05-07 21:33:30 [INFO] app.pipeline.clusterer: [Izvestia] new cluster #938: Захарова заявила о поддержке позиции Китая по невыполнению с
+2026-05-07 21:33:32 [INFO] app.telegram.client: sending NEW_EVENT cluster=#938 score=65 sources=1 type=SANCTIONS
+2026-05-07 21:33:33 [INFO] app.pipeline.orchestrator: event published
+2026-05-07 21:33:33 [INFO] app.pipeline.clusterer: [Izvestia] new cluster #939: ЦАХАЛ заявила о ликвидации одного из командиров «Хезболлы» п
+2026-05-07 21:33:36 [INFO] app.telegram.client: sending NEW_EVENT cluster=#911 score=60 sources=2 type=UNKNOWN
+2026-05-07 21:33:37 [INFO] app.pipeline.orchestrator: event published
+2026-05-07 21:33:37 [INFO] app.pipeline.clusterer: [Izvestia] new cluster #940: Медведев заявил о нарушении ДНЯО из-за возможных ядерных пла
+2026-05-07 21:33:37 [INFO] app.pipeline.clusterer: [Izvestia] new cluster #941: Ученые спрогнозировали магнитные бури во второй половине нед
+2026-05-07 21:33:37 [INFO] app.pipeline.clusterer: [Izvestia] new cluster #942: В Самаре приостановлено движение наземного общественного тра
+2026-05-07 21:33:39 [INFO] app.pipeline.orchestrator: AI gate: no market impact — cluster #942 silenced
+2026-05-07 21:33:39 [INFO] app.pipeline.clusterer: [Izvestia] new cluster #943: В Швейцарии заявили о готовности принять у себя переговоры И
+2026-05-07 21:33:39 [INFO] app.pipeline.clusterer: [Izvestia] new cluster #944: Политолог оценил планы по ужесточению мобилизации на Украине
+2026-05-07 21:33:40 [INFO] app.telegram.client: sending NEW_EVENT cluster=#944 score=65 sources=1 type=WAR_ESCALATION
+2026-05-07 21:33:40 [INFO] app.pipeline.orchestrator: event published
+2026-05-07 21:33:41 [INFO] app.pipeline.clusterer: [Izvestia] new cluster #945: Индикатор доверия: зачем Мосбиржа увеличивает число индексов
+2026-05-07 21:33:41 [INFO] app.pipeline.clusterer: [Izvestia] new cluster #946: Мендель заявила о заработке украинскими чиновниками на мобил
+2026-05-07 21:33:42 [INFO] app.telegram.client: sending NEW_EVENT cluster=#946 score=65 sources=1 type=WAR_ESCALATION
+2026-05-07 21:33:43 [INFO] app.pipeline.orchestrator: event published
+2026-05-07 21:33:43 [INFO] app.pipeline.clusterer: [RG] new cluster #947: США проведут переговоры между Израилем и Ливаном на следующе
+2026-05-07 21:33:43 [INFO] app.pipeline.clusterer: [Investing] new cluster #948: Maximus Q2 FY26: рост маржи компенсировал падение выручки
+2026-05-07 21:33:43 [INFO] app.pipeline.clusterer: [Investing] new cluster #949: First Advantage Q1 2026: выручка +8,6%, маржа 27,3%
+2026-05-07 21:33:43 [INFO] app.core.metrics: metrics
+2026-05-07 21:33:43 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:33:44 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:33:44 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:33:45 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:33:45 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:33:45 [INFO] app.pipeline.fetcher: [TASS] fetched 97 articles
+2026-05-07 21:33:45 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:33:45 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:33:45 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:33:45 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:33:45 [INFO] app.pipeline.fetcher: [Izvestia] fetched 475 articles
+2026-05-07 21:33:45 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1027 raw articles
+2026-05-07 21:33:45 [INFO] app.core.metrics: metrics
+2026-05-07 21:33:45 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:34:44 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:34:44 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:34:44 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:34:45 [INFO] app.pipeline.fetcher: [Izvestia] fetched 475 articles
+2026-05-07 21:34:45 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:34:45 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:34:45 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:34:45 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:34:45 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:34:45 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:34:45 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1030 raw articles
+2026-05-07 21:34:45 [INFO] app.pipeline.clusterer: [TASS] new cluster #950: Проект резолюции СБ ООН по Ормузскому проливу не включает са
+2026-05-07 21:34:46 [INFO] app.telegram.client: sending NEW_EVENT cluster=#950 score=65 sources=1 type=SANCTIONS
+2026-05-07 21:34:46 [INFO] app.pipeline.orchestrator: event published
+2026-05-07 21:34:46 [INFO] app.pipeline.clusterer: [TASS] new cluster #951: Кошта: ЕС готовится к потенциальным переговорам с Россией
+2026-05-07 21:34:46 [INFO] app.pipeline.clusterer: [TASS] new cluster #952: Продажа запрещенных к реализации товаров будет грозить штраф
+2026-05-07 21:34:46 [INFO] app.pipeline.clusterer: [TASS] new cluster #953: ТАСС: в Виннице подростку сломали руку при мобилизации его о
+2026-05-07 21:34:48 [INFO] app.pipeline.orchestrator: AI gate: no market impact — cluster #953 silenced
+2026-05-07 21:34:48 [INFO] app.pipeline.clusterer: [TASS] new cluster #954: В России 15 июня рассмотрят иск "Газпрома" к NET4GAS
+2026-05-07 21:34:48 [INFO] app.pipeline.clusterer: [TASS] new cluster #955: В НОК Белоруссии назвали долгожданным решение МОК о снятии с
+2026-05-07 21:34:49 [INFO] app.pipeline.orchestrator: AI gate: no market impact — cluster #955 silenced
+2026-05-07 21:34:50 [INFO] app.core.metrics: metrics
+2026-05-07 21:34:50 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:35:44 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:35:44 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:35:44 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:35:44 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:35:45 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:35:45 [INFO] app.pipeline.fetcher: [Izvestia] fetched 475 articles
+2026-05-07 21:35:45 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:35:45 [INFO] app.pipeline.fetcher: [TASS] fetched 97 articles
+2026-05-07 21:35:45 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:35:45 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:35:45 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1027 raw articles
+2026-05-07 21:35:45 [INFO] app.core.metrics: metrics
+2026-05-07 21:35:45 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:36:44 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:36:44 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:36:44 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:36:45 [INFO] app.pipeline.fetcher: [Izvestia] fetched 475 articles
+2026-05-07 21:36:45 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:36:45 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:36:45 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:36:45 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:36:45 [INFO] app.pipeline.fetcher: [Kommersant] fetched 549 articles
+2026-05-07 21:36:45 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:36:45 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:36:45 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1579 raw articles
+2026-05-07 21:36:45 [INFO] app.core.metrics: metrics
+2026-05-07 21:36:45 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:37:44 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:37:44 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:37:44 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:37:44 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:37:45 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:37:45 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:37:45 [INFO] app.pipeline.fetcher: [Izvestia] fetched 474 articles
+2026-05-07 21:37:45 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:37:45 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:37:47 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:37:47 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1029 raw articles
+2026-05-07 21:37:47 [INFO] app.core.metrics: metrics
+2026-05-07 21:37:47 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:38:45 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:38:45 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:38:45 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:38:45 [INFO] app.pipeline.fetcher: [Izvestia] fetched 473 articles
+2026-05-07 21:38:45 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:38:45 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:38:45 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:38:45 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:38:45 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:38:45 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:38:45 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1028 raw articles
+2026-05-07 21:38:45 [INFO] app.core.metrics: metrics
+2026-05-07 21:38:45 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:39:44 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:39:45 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:39:45 [INFO] app.pipeline.fetcher: [Izvestia] fetched 472 articles
+2026-05-07 21:39:45 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:39:45 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:39:45 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:39:45 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:39:45 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:39:45 [WARNING] app.pipeline.fetcher: [Investing] HTTP 502 — recording error
+2026-05-07 21:39:45 [WARNING] app.db.queries: Source id=13 backoff: error_count=1, retry in 2 min
+2026-05-07 21:39:45 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:39:45 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:39:45 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1027 raw articles
+2026-05-07 21:39:46 [INFO] app.core.metrics: metrics
+2026-05-07 21:39:46 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:40:45 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:40:45 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:40:45 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:40:45 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:40:45 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:40:45 [INFO] app.pipeline.fetcher: [Izvestia] fetched 472 articles
+2026-05-07 21:40:45 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:40:45 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:40:45 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:40:45 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:40:45 [INFO] app.pipeline.fetcher: Poll complete: 12 sources, 1027 raw articles
+2026-05-07 21:40:46 [INFO] app.core.metrics: metrics
+2026-05-07 21:40:46 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:41:44 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:41:44 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:41:44 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:41:45 [INFO] app.pipeline.fetcher: [Izvestia] fetched 472 articles
+2026-05-07 21:41:45 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:41:45 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:41:45 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:41:45 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:41:45 [INFO] app.pipeline.fetcher: [Kommersant] fetched 549 articles
+2026-05-07 21:41:45 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:41:45 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:41:45 [INFO] app.pipeline.fetcher: Poll complete: 12 sources, 1576 raw articles
+2026-05-07 21:41:45 [INFO] app.core.metrics: metrics
+2026-05-07 21:41:45 [INFO] app.scheduler.jobs: poll complete
+WARNING:  WatchFiles detected changes in 'app/ai/analyzer.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+2026-05-07 21:41:49 [INFO] app.scheduler.runner: Scheduler stopped
+2026-05-07 21:41:49 [INFO] app.main: app stopped
+INFO:     Application shutdown complete.
+INFO:     Finished server process [64565]
+INFO:     Started server process [65014]
+INFO:     Waiting for application startup.
+2026-05-07 21:41:49 [INFO] app.db.database: Database initialized
+2026-05-07 21:41:49 [INFO] app.db.queries: RSS sources seeded (13 entries)
+2026-05-07 21:41:49 [INFO] app.scheduler.runner: Scheduler started (poll=60s, cleanup=24h, backup=6h, heartbeat=5m)
+2026-05-07 21:41:49 [INFO] app.main: app started
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'app/ai/analyzer.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+2026-05-07 21:41:54 [INFO] app.scheduler.runner: Scheduler stopped
+2026-05-07 21:41:54 [INFO] app.main: app stopped
+INFO:     Application shutdown complete.
+INFO:     Finished server process [65014]
+INFO:     Started server process [65031]
+INFO:     Waiting for application startup.
+2026-05-07 21:41:54 [INFO] app.db.database: Database initialized
+2026-05-07 21:41:54 [INFO] app.db.queries: RSS sources seeded (13 entries)
+2026-05-07 21:41:54 [INFO] app.scheduler.runner: Scheduler started (poll=60s, cleanup=24h, backup=6h, heartbeat=5m)
+2026-05-07 21:41:54 [INFO] app.main: app started
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'app/ai/analyzer.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+2026-05-07 21:41:57 [INFO] app.scheduler.runner: Scheduler stopped
+2026-05-07 21:41:57 [INFO] app.main: app stopped
+INFO:     Application shutdown complete.
+INFO:     Finished server process [65031]
+INFO:     Started server process [65037]
+INFO:     Waiting for application startup.
+2026-05-07 21:41:57 [INFO] app.db.database: Database initialized
+2026-05-07 21:41:57 [INFO] app.db.queries: RSS sources seeded (13 entries)
+2026-05-07 21:41:57 [INFO] app.scheduler.runner: Scheduler started (poll=60s, cleanup=24h, backup=6h, heartbeat=5m)
+2026-05-07 21:41:57 [INFO] app.main: app started
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'app/ai/analyzer.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+2026-05-07 21:42:00 [INFO] app.scheduler.runner: Scheduler stopped
+2026-05-07 21:42:00 [INFO] app.main: app stopped
+INFO:     Application shutdown complete.
+INFO:     Finished server process [65037]
+INFO:     Started server process [65040]
+INFO:     Waiting for application startup.
+2026-05-07 21:42:00 [INFO] app.db.database: Database initialized
+2026-05-07 21:42:00 [INFO] app.db.queries: RSS sources seeded (13 entries)
+2026-05-07 21:42:00 [INFO] app.scheduler.runner: Scheduler started (poll=60s, cleanup=24h, backup=6h, heartbeat=5m)
+2026-05-07 21:42:00 [INFO] app.main: app started
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'app/ai/analyzer.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+2026-05-07 21:42:04 [INFO] app.scheduler.runner: Scheduler stopped
+2026-05-07 21:42:04 [INFO] app.main: app stopped
+INFO:     Application shutdown complete.
+INFO:     Finished server process [65040]
+INFO:     Started server process [65046]
+INFO:     Waiting for application startup.
+2026-05-07 21:42:05 [INFO] app.db.database: Database initialized
+2026-05-07 21:42:05 [INFO] app.db.queries: RSS sources seeded (13 entries)
+2026-05-07 21:42:05 [INFO] app.scheduler.runner: Scheduler started (poll=60s, cleanup=24h, backup=6h, heartbeat=5m)
+2026-05-07 21:42:05 [INFO] app.main: app started
+INFO:     Application startup complete.
+2026-05-07 21:43:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:43:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:43:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:43:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:43:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:43:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:43:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:43:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 472 articles
+2026-05-07 21:43:05 [INFO] app.pipeline.fetcher: [Investing] fetched 10 articles
+2026-05-07 21:43:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:43:06 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:43:06 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1037 raw articles
+2026-05-07 21:43:06 [INFO] app.pipeline.clusterer: [TASS] new cluster #956: Трамп заявил, что обсудил с бразильским коллегой торговлю и 
+2026-05-07 21:43:06 [INFO] app.pipeline.clusterer: [Investing] new cluster #957: Phibro Q3 FY2026: рост продаж на 10% на фоне регуляторных ри
+2026-05-07 21:43:06 [INFO] app.pipeline.clusterer: [Investing] new cluster #958: Hertz Q1 2026: доход превысил прогноз, акции упали
+2026-05-07 21:43:06 [INFO] app.core.metrics: metrics
+2026-05-07 21:43:06 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:44:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:44:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:44:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:44:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:44:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:44:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:44:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:44:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 472 articles
+2026-05-07 21:44:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:44:06 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:44:06 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1027 raw articles
+2026-05-07 21:44:06 [INFO] app.core.metrics: metrics
+2026-05-07 21:44:06 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:45:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:45:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:45:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:45:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:45:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:45:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:45:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:45:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 473 articles
+2026-05-07 21:45:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:45:06 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:45:06 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1028 raw articles
+2026-05-07 21:45:06 [INFO] app.core.metrics: metrics
+2026-05-07 21:45:06 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:46:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:46:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:46:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:46:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:46:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:46:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:46:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 473 articles
+2026-05-07 21:46:05 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:46:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:46:06 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:46:09 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1028 raw articles
+2026-05-07 21:46:09 [INFO] app.core.metrics: metrics
+2026-05-07 21:46:09 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:47:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:47:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:47:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:47:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:47:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 473 articles
+2026-05-07 21:47:05 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:47:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:47:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:47:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:47:05 [INFO] app.pipeline.fetcher: [Kommersant] fetched 549 articles
+2026-05-07 21:47:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:47:05 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1577 raw articles
+2026-05-07 21:47:06 [INFO] app.core.metrics: metrics
+2026-05-07 21:47:06 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:48:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:48:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:48:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:48:05 [INFO] app.pipeline.fetcher: [Vedomosti] fetched 200 articles
+2026-05-07 21:48:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:48:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:48:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:48:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 474 articles
+2026-05-07 21:48:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:48:05 [INFO] app.pipeline.fetcher: [TASS] fetched 97 articles
+2026-05-07 21:48:06 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:48:06 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1226 raw articles
+2026-05-07 21:48:06 [INFO] app.core.metrics: metrics
+2026-05-07 21:48:06 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:49:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:49:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:49:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:49:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:49:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:49:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:49:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:49:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 474 articles
+2026-05-07 21:49:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:49:06 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:49:09 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1029 raw articles
+2026-05-07 21:49:09 [INFO] app.pipeline.clusterer: [TASS] new cluster #959: Тамбиев рассказал подробности переговоров перед назначением 
+2026-05-07 21:49:09 [INFO] app.core.metrics: metrics
+2026-05-07 21:49:09 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:50:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:50:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:50:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:50:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:50:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:50:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:50:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:50:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:50:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 474 articles
+2026-05-07 21:50:06 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:50:06 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1029 raw articles
+2026-05-07 21:50:06 [INFO] app.core.metrics: metrics
+2026-05-07 21:50:06 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:51:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:51:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:51:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:51:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:51:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:51:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 474 articles
+2026-05-07 21:51:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:51:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:51:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:51:06 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:51:06 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1029 raw articles
+2026-05-07 21:51:06 [INFO] app.core.metrics: metrics
+2026-05-07 21:51:06 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:52:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:52:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:52:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:52:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:52:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:52:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:52:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:52:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:52:05 [INFO] app.pipeline.fetcher: [Kommersant] fetched 550 articles
+2026-05-07 21:52:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 474 articles
+2026-05-07 21:52:10 [WARNING] app.pipeline.fetcher: [MOEX] Timeout — recording error
+2026-05-07 21:52:10 [WARNING] app.db.queries: Source id=14 backoff: error_count=1, retry in 2 min
+2026-05-07 21:52:10 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1434 raw articles
+2026-05-07 21:52:10 [INFO] app.core.metrics: metrics
+2026-05-07 21:52:10 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:53:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:53:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:53:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:53:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:53:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 474 articles
+2026-05-07 21:53:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:53:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:53:07 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:53:07 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:53:07 [INFO] app.pipeline.fetcher: Poll complete: 12 sources, 884 raw articles
+2026-05-07 21:53:07 [INFO] app.core.metrics: metrics
+2026-05-07 21:53:07 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:54:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:54:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:54:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 474 articles
+2026-05-07 21:54:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:54:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:54:05 [INFO] app.pipeline.fetcher: [Investing] fetched 10 articles
+2026-05-07 21:54:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:54:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:54:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:54:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:54:05 [INFO] app.pipeline.fetcher: Poll complete: 12 sources, 894 raw articles
+2026-05-07 21:54:05 [INFO] app.pipeline.clusterer: [Investing] new cluster #960: StoneX Q2 2026: рекордная прибыль на фоне роста маркетмейкин
+2026-05-07 21:54:05 [INFO] app.pipeline.clusterer: [Investing] new cluster #961: Lion Finance Q1 2026: прибыль выросла на 14%
+2026-05-07 21:54:05 [INFO] app.core.metrics: metrics
+2026-05-07 21:54:05 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:55:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:55:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:55:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:55:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:55:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:55:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 474 articles
+2026-05-07 21:55:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:55:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:55:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:55:06 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:55:06 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1029 raw articles
+2026-05-07 21:55:06 [INFO] app.core.metrics: metrics
+2026-05-07 21:55:06 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:56:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:56:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 474 articles
+2026-05-07 21:56:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:56:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:56:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:56:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:56:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:56:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:56:05 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:56:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:56:05 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1029 raw articles
+2026-05-07 21:56:06 [INFO] app.core.metrics: metrics
+2026-05-07 21:56:06 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:57:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:57:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:57:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:57:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:57:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:57:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:57:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:57:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 474 articles
+2026-05-07 21:57:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:57:05 [INFO] app.pipeline.fetcher: [Kommersant] fetched 550 articles
+2026-05-07 21:57:05 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:57:05 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1579 raw articles
+2026-05-07 21:57:06 [INFO] app.pipeline.clusterer: [Izvestia] new cluster #962: Собянин сообщил о ликвидации двух летевших на Москву БПЛА
+2026-05-07 21:57:06 [INFO] app.core.metrics: metrics
+2026-05-07 21:57:06 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:58:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:58:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:58:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:58:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:58:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:58:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:58:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 474 articles
+2026-05-07 21:58:05 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:58:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:58:07 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:58:07 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1029 raw articles
+2026-05-07 21:58:07 [INFO] app.core.metrics: metrics
+2026-05-07 21:58:07 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 21:59:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 21:59:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 21:59:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 21:59:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 21:59:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 473 articles
+2026-05-07 21:59:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 21:59:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 21:59:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 21:59:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 21:59:05 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 21:59:05 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1028 raw articles
+2026-05-07 21:59:05 [INFO] app.core.metrics: metrics
+2026-05-07 21:59:05 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 22:00:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 22:00:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 22:00:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 22:00:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 22:00:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 473 articles
+2026-05-07 22:00:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 22:00:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 22:00:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 22:00:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 22:00:06 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 22:00:06 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1028 raw articles
+2026-05-07 22:00:06 [INFO] app.core.metrics: metrics
+2026-05-07 22:00:06 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 22:01:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 22:01:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 22:01:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 473 articles
+2026-05-07 22:01:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 22:01:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 22:01:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 22:01:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 22:01:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 22:01:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 22:01:05 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 22:01:05 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1028 raw articles
+2026-05-07 22:01:06 [INFO] app.core.metrics: metrics
+2026-05-07 22:01:06 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 22:02:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 22:02:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 22:02:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 22:02:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 22:02:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 22:02:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 22:02:05 [INFO] app.pipeline.fetcher: [TASS] fetched 97 articles
+2026-05-07 22:02:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 474 articles
+2026-05-07 22:02:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 22:02:06 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 22:02:06 [INFO] app.pipeline.fetcher: [Kommersant] fetched 550 articles
+2026-05-07 22:02:06 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1576 raw articles
+2026-05-07 22:02:07 [INFO] app.core.metrics: metrics
+2026-05-07 22:02:07 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 22:03:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 22:03:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 22:03:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 22:03:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 22:03:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 22:03:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 22:03:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 474 articles
+2026-05-07 22:03:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 22:03:05 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 22:03:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 22:03:05 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1029 raw articles
+2026-05-07 22:03:05 [INFO] app.core.metrics: metrics
+2026-05-07 22:03:05 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 22:04:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 22:04:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 22:04:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 22:04:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 22:04:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 22:04:05 [INFO] app.pipeline.fetcher: [TASS] fetched 97 articles
+2026-05-07 22:04:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 474 articles
+2026-05-07 22:04:05 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 22:04:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 22:04:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 22:04:05 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1026 raw articles
+2026-05-07 22:04:05 [INFO] app.core.metrics: metrics
+2026-05-07 22:04:05 [INFO] app.scheduler.jobs: poll complete
+2026-05-07 22:05:05 [WARNING] app.pipeline.fetcher: [Gazeta] Malformed feed (bozo): document declared as windows-1251, but parsed as utf-8
+2026-05-07 22:05:05 [INFO] app.pipeline.fetcher: [Gazeta] fetched 15 articles
+2026-05-07 22:05:05 [INFO] app.pipeline.fetcher: [Interfax] fetched 25 articles
+2026-05-07 22:05:05 [INFO] app.pipeline.fetcher: [TASS] fetched 100 articles
+2026-05-07 22:05:05 [INFO] app.pipeline.fetcher: [RIA] fetched 20 articles
+2026-05-07 22:05:05 [INFO] app.pipeline.fetcher: [Izvestia] fetched 474 articles
+2026-05-07 22:05:05 [INFO] app.pipeline.fetcher: [MOEX] fetched 145 articles
+2026-05-07 22:05:05 [INFO] app.pipeline.fetcher: [BFM] fetched 50 articles
+2026-05-07 22:05:05 [INFO] app.pipeline.fetcher: [RG] fetched 100 articles
+2026-05-07 22:05:05 [INFO] app.pipeline.fetcher: [Prime] fetched 100 articles
+2026-05-07 22:05:05 [INFO] app.pipeline.fetcher: Poll complete: 13 sources, 1029 raw articles
+2026-05-07 22:05:06 [INFO] app.core.metrics: metrics
+2026-05-07 22:05:06 [INFO] app.scheduler.jobs: poll complete

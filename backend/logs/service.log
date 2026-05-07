@@ -1,0 +1,12 @@
+INFO:     Started server process [61724]
+INFO:     Waiting for application startup.
+2026-05-07 20:20:43 [INFO] app.db.database: Database initialized
+2026-05-07 20:20:43 [INFO] app.db.queries: RSS sources seeded (13 entries)
+2026-05-07 20:20:43 [INFO] app.scheduler.runner: Scheduler started (poll=60s, cleanup=24h, backup=6h)
+2026-05-07 20:20:43 [INFO] app.main: app started
+INFO:     Application startup complete.
+ERROR:    [Errno 48] error while attempting to bind on address ('0.0.0.0', 8000): address already in use
+INFO:     Waiting for application shutdown.
+2026-05-07 20:20:43 [INFO] app.scheduler.runner: Scheduler stopped
+2026-05-07 20:20:43 [INFO] app.main: app stopped
+INFO:     Application shutdown complete.
