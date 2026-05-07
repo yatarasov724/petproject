@@ -344,6 +344,62 @@ def get_cluster(
 
 # ── telegram_sends ────────────────────────────────────────────────────────────
 
+def has_recent_send_attempt(
+    db: sqlite3.Connection,
+    cluster_id: int,
+    within_hours: int = 2,
+) -> bool:
+    """
+    Return True if any telegram_send row exists for this cluster within the window.
+
+    Includes failed sends (ok=0) because a timed-out HTTP request may have been
+    delivered by Telegram even though our code received no response. Checking
+    failed attempts prevents the retry-on-next-cycle duplicate pattern.
+    """
+    cutoff = _iso(datetime.now(timezone.utc) - timedelta(hours=within_hours))
+    row = db.execute(
+        "SELECT 1 FROM telegram_sends WHERE cluster_id = ? AND sent_at >= ? LIMIT 1",
+        (cluster_id, cutoff),
+    ).fetchone()
+    return row is not None
+
+
+def get_recently_sent_title_tokens(
+    db: sqlite3.Connection,
+    within_hours: int = 2,
+    exclude_cluster_id: Optional[int] = None,
+) -> list[str]:
+    """
+    Return title_tokens for clusters that had a SUCCESSFUL send within the window.
+
+    Used for cross-cluster duplicate detection: two different clusters may represent
+    the same event when sources use wording different enough to escape both near-dedup
+    (Jaccard < threshold) and containment clustering (containment < threshold).
+    """
+    cutoff = _iso(datetime.now(timezone.utc) - timedelta(hours=within_hours))
+    if exclude_cluster_id is not None:
+        rows = db.execute(
+            """
+            SELECT DISTINCT ec.title_tokens
+            FROM   telegram_sends ts
+            JOIN   event_clusters ec ON ts.cluster_id = ec.id
+            WHERE  ts.sent_at >= ? AND ts.ok = 1 AND ts.cluster_id != ?
+            """,
+            (cutoff, exclude_cluster_id),
+        ).fetchall()
+    else:
+        rows = db.execute(
+            """
+            SELECT DISTINCT ec.title_tokens
+            FROM   telegram_sends ts
+            JOIN   event_clusters ec ON ts.cluster_id = ec.id
+            WHERE  ts.sent_at >= ? AND ts.ok = 1
+            """,
+            (cutoff,),
+        ).fetchall()
+    return [r["title_tokens"] for r in rows]
+
+
 def log_send(
     db: sqlite3.Connection,
     cluster_id: int,

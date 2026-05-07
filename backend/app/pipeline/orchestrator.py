@@ -18,6 +18,8 @@ Sequence for each article
   4. dedup.record()         — persist to seen_articles with cluster_id
   5. queries.get_cluster()  — reload cluster state (source_count updated)
   6. scorer.compute_score() — rescore with actual source_count
+  6b. dup guard             — check telegram_sends to prevent same-cluster retries
+                              and cross-cluster near-dup publishes
   7. publish_decision.decide() — NEW_EVENT / UPDATE / SILENCE
   8. tg.send()              — send to Telegram (if not SILENCE)
 """
@@ -35,7 +37,7 @@ from app.core import metrics
 from app.db import queries
 from app.pipeline import dedup, clusterer, scorer
 from app.pipeline.normalizer import RawArticle
-from app.pipeline.publish_decision import decide, Decision
+from app.pipeline.publish_decision import decide, Decision, COOLDOWN_HOURS
 from app.telegram import client as tg
 from app.telegram.formatter import format_message
 
@@ -190,6 +192,48 @@ async def _run(db: sqlite3.Connection, article: RawArticle) -> ArticleResult:
         article.title,
         source_count=cluster["source_count"],
     )
+
+    # ── step 6b: pre-publish dup guard (new clusters only) ───────────────
+    # Two failure modes bypass the normal cooldown check and cause duplicates:
+    #
+    # (a) Same cluster resent: tg.send() timed out after Telegram delivered the
+    #     message — mark_cluster_sent() was never called, so cluster stays 'new'.
+    #     Next poll cycle sees status='new' and re-publishes.
+    #
+    # (b) Cross-cluster same event: two sources used different enough wording
+    #     to escape near-dedup (Jaccard < 0.35) AND containment clustering
+    #     (< 0.50), each creating its own 'new' cluster — both publish.
+    #
+    # Both are only possible when status='new'; published/updated clusters
+    # are already guarded by the cooldown rule in decide().
+    if cluster["status"] == "new":
+        if queries.has_recent_send_attempt(db, cluster["id"], within_hours=COOLDOWN_HOURS):
+            metrics.inc(metrics.EVENTS_SILENCED)
+            logger.info(
+                "dup guard: send already attempted for cluster #%d, silencing",
+                cluster["id"],
+                extra={"event": "dup_guard_same_cluster", "cluster_id": cluster["id"]},
+            )
+            return ArticleResult(
+                Outcome.SILENCE, article.source_name, short,
+                score=score_result.score, cluster_id=cluster["id"],
+            )
+
+        recent_tokens = queries.get_recently_sent_title_tokens(
+            db, within_hours=COOLDOWN_HOURS, exclude_cluster_id=cluster["id"]
+        )
+        for sent_tokens in recent_tokens:
+            if dedup.jaccard(cluster["title_tokens"], sent_tokens) >= dedup.JACCARD_THRESHOLD:
+                metrics.inc(metrics.EVENTS_SILENCED)
+                logger.info(
+                    "dup guard: cross-cluster near-dup for cluster #%d, silencing",
+                    cluster["id"],
+                    extra={"event": "dup_guard_cross_cluster", "cluster_id": cluster["id"]},
+                )
+                return ArticleResult(
+                    Outcome.SILENCE, article.source_name, short,
+                    score=score_result.score, cluster_id=cluster["id"],
+                )
 
     # ── step 7: publish decision ──────────────────────────────────────────
     pub = decide(cluster, score_result)

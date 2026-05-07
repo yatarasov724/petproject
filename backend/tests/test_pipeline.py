@@ -469,3 +469,198 @@ class TestAIFireAndForget:
 
         assert result.outcome == Outcome.SEND_FAIL
         assert edit_calls == [], "edit_message must not be called when send fails"
+
+
+# ── pre-publish dup guard ─────────────────────────────────────────────────────
+
+class TestDupGuardQueries:
+    """Unit tests for the two new query functions used by the dup guard."""
+
+    def _seed_cluster(self, db, title: str, sent: bool = False, ok: bool = True) -> int:
+        from app.pipeline.normalizer import tokenize
+        tokens = " ".join(tokenize(title))
+        cid = queries.create_cluster(
+            db, canonical_title=title, title_tokens=tokens,
+            keywords=tokens, score=50,
+        )
+        if sent:
+            queries.mark_cluster_sent(db, cid, "NEW_EVENT", score=50)
+            queries.log_send(
+                db, cluster_id=cid, decision="NEW_EVENT", score=50,
+                source_count=1, headline=title,
+                tg_message_id=42 if ok else None, ok=ok,
+                error_text=None if ok else "timeout",
+            )
+        return cid
+
+    def test_has_recent_attempt_true_for_successful_send(self, db):
+        cid = self._seed_cluster(db, "ЦБ повысил ключевую ставку до 21 процента", sent=True, ok=True)
+        assert queries.has_recent_send_attempt(db, cid, within_hours=2)
+
+    def test_has_recent_attempt_true_for_failed_send(self, db):
+        """Failed sends (ok=0) must also be counted — timeout may have delivered."""
+        cid = self._seed_cluster(db, "ЦБ повысил ключевую ставку до 21 процента", sent=True, ok=False)
+        assert queries.has_recent_send_attempt(db, cid, within_hours=2)
+
+    def test_has_recent_attempt_false_without_any_send(self, db):
+        cid = self._seed_cluster(db, "ЦБ повысил ключевую ставку до 21 процента", sent=False)
+        assert not queries.has_recent_send_attempt(db, cid, within_hours=2)
+
+    def test_get_recently_sent_returns_successful_cluster_tokens(self, db):
+        from app.pipeline.normalizer import tokenize
+        title = "ЦБ повысил ключевую ставку до 21 процента"
+        self._seed_cluster(db, title, sent=True, ok=True)
+        tokens = queries.get_recently_sent_title_tokens(db, within_hours=2)
+        assert len(tokens) == 1
+        assert tokens[0] == " ".join(tokenize(title))
+
+    def test_get_recently_sent_excludes_failed_sends(self, db):
+        """Failed sends must NOT appear in the cross-cluster token pool."""
+        self._seed_cluster(db, "ЦБ повысил ключевую ставку до 21 процента", sent=True, ok=False)
+        tokens = queries.get_recently_sent_title_tokens(db, within_hours=2)
+        assert tokens == []
+
+    def test_get_recently_sent_respects_exclude_cluster_id(self, db):
+        cid = self._seed_cluster(db, "ЦБ повысил ключевую ставку до 21 процента", sent=True, ok=True)
+        tokens = queries.get_recently_sent_title_tokens(db, within_hours=2, exclude_cluster_id=cid)
+        assert tokens == []
+
+    def test_guard_query_does_not_match_unrelated_title(self, db):
+        """Газпром contract news must not Jaccard-match a ЦБ rate-hike cluster."""
+        from app.pipeline.dedup import jaccard, JACCARD_THRESHOLD
+        from app.pipeline.normalizer import tokenize
+        self._seed_cluster(db, "ЦБ повысил ключевую ставку до 21 процента", sent=True, ok=True)
+
+        tokens_gaz = " ".join(tokenize("Газпром подписал контракт на поставку газа в Китай"))
+        for sent_tokens in queries.get_recently_sent_title_tokens(db, within_hours=2):
+            j = jaccard(tokens_gaz, sent_tokens)
+            assert j < JACCARD_THRESHOLD, (
+                f"Газпром Jaccard={j:.2f} ≥ {JACCARD_THRESHOLD}: "
+                "dup guard would incorrectly silence unrelated event"
+            )
+
+
+class TestDupGuard:
+    """
+    Integration tests for the pre-publish dup guard in orchestrator._run().
+
+    The guard fires only when cluster["status"] == "new" (published clusters
+    are already protected by the cooldown rule in decide()).
+
+    Case (a): same cluster, guard fires on a recent send attempt (even failed ones),
+              preventing a duplicate when tg.send() timed out after Telegram delivery.
+    Case (b): cross-cluster near-dup, two different clusters for the same event
+              are caught by Jaccard comparison against recently-sent title tokens.
+    """
+
+    @pytest.mark.asyncio
+    async def test_same_cluster_recent_attempt_is_silenced(self, db):
+        """
+        Guard fires when a 'new' cluster already has a telegram_sends row.
+        Simulates the timeout scenario: send logged as failed but message delivered.
+        """
+        from app.pipeline.normalizer import tokenize
+
+        title = "ЦБ повысил ключевую ставку до 21 процента"
+        tokens = " ".join(tokenize(title))
+
+        # Create cluster directly (status='new') and seed a failed send attempt.
+        # Simulates what tg.send() would write when it times out.
+        cluster_id = queries.create_cluster(
+            db, canonical_title=title, title_tokens=tokens, keywords=tokens, score=50,
+        )
+        queries.log_send(
+            db, cluster_id=cluster_id, decision="NEW_EVENT", score=50,
+            source_count=1, headline=title,
+            tg_message_id=None, ok=False, error_text="timeout",
+        )
+
+        # Process an article that scores high enough and joins this cluster.
+        # seen_articles is empty so near-dedup won't fire.
+        article = make_article(title=title, source_id=1, raw_hash="dg_same_cluster")
+        with patch("app.telegram.client.send", return_value=1) as mock_send:
+            result = await process(db, article)
+
+        assert result.outcome == Outcome.SILENCE
+        mock_send.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cross_cluster_near_dup_is_silenced(self, db):
+        """
+        Two similar titles create separate clusters (different enough to escape
+        near-dedup and containment). The second one is silenced by cross-cluster
+        Jaccard comparison against the first cluster's sent tokens.
+        """
+        from app.pipeline.dedup import jaccard, JACCARD_THRESHOLD
+        from app.pipeline.normalizer import tokenize
+
+        title_a = "ЦБ повысил ключевую ставку до 21 процента"
+        title_b = "ЦБ поднял ключевую ставку до 21 процентов сегодня"
+
+        # Pre-condition: titles share ≥ JACCARD_THRESHOLD tokens (guard will fire)
+        j = jaccard(" ".join(tokenize(title_a)), " ".join(tokenize(title_b)))
+        assert j >= JACCARD_THRESHOLD, (
+            f"Test pre-condition failed: Jaccard={j:.2f} < {JACCARD_THRESHOLD}. "
+            "Adjust titles if tokenizer changes."
+        )
+
+        # Seed cluster A as sent (simulates first cycle completing successfully)
+        from app.pipeline.normalizer import tokenize as _tok
+        tokens_a = " ".join(_tok(title_a))
+        cluster_a = queries.create_cluster(
+            db, canonical_title=title_a, title_tokens=tokens_a, keywords=tokens_a, score=50,
+        )
+        queries.mark_cluster_sent(db, cluster_a, "NEW_EVENT", score=50)
+        queries.log_send(
+            db, cluster_id=cluster_a, decision="NEW_EVENT", score=50,
+            source_count=1, headline=title_a, tg_message_id=99, ok=True,
+        )
+
+        # Process title_b. seen_articles is empty → near-dedup misses.
+        # Cluster A tokens may or may not match title_b's containment threshold;
+        # either way the guard should silence the new send.
+        article_b = make_article(title=title_b, source_id=2, raw_hash="dg_cross_b")
+        with patch("app.telegram.client.send", return_value=1) as mock_send:
+            result = await process(db, article_b)
+
+        assert result.outcome != Outcome.SENT_NEW, (
+            "A near-duplicate event must not produce a second NEW_EVENT"
+        )
+        # If it joined cluster A (cooldown) or was caught by the guard → SILENCE.
+        # If near-dedup fired (article already in seen_articles) → NEAR_DUP.
+        # SENT_UPDATE is also acceptable if 2h cooldown had elapsed (won't happen in tests).
+        assert result.outcome in (Outcome.SILENCE, Outcome.NEAR_DUP)
+
+    @pytest.mark.asyncio
+    async def test_guard_does_not_block_after_cooldown_expires(self, db):
+        """
+        A new article may still be published once the cooldown window has passed.
+        This test verifies the guard uses within_hours=COOLDOWN_HOURS correctly.
+        """
+        from app.pipeline.normalizer import tokenize
+        from datetime import timedelta
+
+        title = "ЦБ повысил ключевую ставку до 21 процента"
+        tokens = " ".join(tokenize(title))
+
+        cluster_id = queries.create_cluster(
+            db, canonical_title=title, title_tokens=tokens, keywords=tokens, score=50,
+        )
+        # Backdate the send to 3 hours ago — outside the 2-hour cooldown window
+        old_sent_at = (
+            datetime.now(timezone.utc) - timedelta(hours=3)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        db.execute(
+            """
+            INSERT INTO telegram_sends
+                (cluster_id, decision, score, source_count, headline,
+                 tg_message_id, ok, sent_at)
+            VALUES (?, 'NEW_EVENT', 50, 1, ?, 42, 1, ?)
+            """,
+            (cluster_id, title, old_sent_at),
+        )
+        db.commit()
+
+        assert not queries.has_recent_send_attempt(db, cluster_id, within_hours=2), (
+            "Attempt older than cooldown window must not block the guard"
+        )
