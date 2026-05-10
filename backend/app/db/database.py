@@ -47,4 +47,18 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.commit()
         logger.info("Migration applied: event_clusters.tickers")
     except sqlite3.OperationalError:
-        pass  # column already exists
+        pass
+
+    try:
+        conn.execute("ALTER TABLE rss_sources ADD COLUMN source_type TEXT NOT NULL DEFAULT 'rss'")
+        conn.commit()
+        logger.info("Migration applied: rss_sources.source_type")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        conn.execute("ALTER TABLE rss_sources ADD COLUMN tg_last_msg_id INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+        logger.info("Migration applied: rss_sources.tg_last_msg_id")
+    except sqlite3.OperationalError:
+        pass

@@ -44,6 +44,13 @@ _RSS_SEEDS = [
     # ("CBR",     "https://www.cbr.ru/rss/"),           # 404
 ]
 
+_TG_SEEDS = [
+    ("TG:markettwits",   "tg://markettwits"),    # market commentary, popular
+    ("TG:russianmacro",  "tg://russianmacro"),   # macro & CBR
+    ("TG:cbrstocks",     "tg://cbrstocks"),       # CBR/stocks news
+    ("TG:moexnews",      "tg://moexnews"),        # official MOEX channel
+]
+
 _BACKOFF_MAX_MINUTES = 120
 _DEAD_AFTER_ERRORS   = 10
 
@@ -53,15 +60,19 @@ def seed_sources(db: sqlite3.Connection) -> None:
         "INSERT OR IGNORE INTO rss_sources (name, url) VALUES (?, ?)",
         _RSS_SEEDS,
     )
+    db.executemany(
+        "INSERT OR IGNORE INTO rss_sources (name, url, source_type) VALUES (?, ?, 'telegram')",
+        _TG_SEEDS,
+    )
     db.commit()
-    logger.info("RSS sources seeded (%d entries)", len(_RSS_SEEDS))
+    logger.info("Sources seeded: %d RSS, %d Telegram", len(_RSS_SEEDS), len(_TG_SEEDS))
 
 
 # ── rss_sources reads ─────────────────────────────────────────────────────────
 
 def get_active_sources(db: sqlite3.Connection) -> list[sqlite3.Row]:
     """
-    Return sources that are enabled, not dead, and either:
+    Return RSS sources that are enabled, not dead, and either:
     - have no retry delay (status='ok'), or
     - are in backoff but next_retry_at has passed.
     """
@@ -71,12 +82,51 @@ def get_active_sources(db: sqlite3.Connection) -> list[sqlite3.Row]:
         SELECT *
         FROM   rss_sources
         WHERE  enabled = 1
+          AND  source_type = 'rss'
           AND  status  != 'dead'
           AND  (next_retry_at IS NULL OR next_retry_at <= ?)
         ORDER  BY id
         """,
         (now,),
     ).fetchall()
+
+
+def get_active_tg_channels(db: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Return Telegram channels that are enabled and not dead."""
+    now = _utcnow_iso()
+    return db.execute(
+        """
+        SELECT *
+        FROM   rss_sources
+        WHERE  enabled = 1
+          AND  source_type = 'telegram'
+          AND  status  != 'dead'
+          AND  (next_retry_at IS NULL OR next_retry_at <= ?)
+        ORDER  BY id
+        """,
+        (now,),
+    ).fetchall()
+
+
+def update_tg_channel_ok(
+    db: sqlite3.Connection,
+    source_id: int,
+    last_msg_id: int,
+) -> None:
+    db.execute(
+        """
+        UPDATE rss_sources
+        SET    tg_last_msg_id  = ?,
+               last_fetched_at = ?,
+               error_count     = 0,
+               last_error_at   = NULL,
+               next_retry_at   = NULL,
+               status          = 'ok'
+        WHERE  id = ?
+        """,
+        (last_msg_id, _utcnow_iso(), source_id),
+    )
+    db.commit()
 
 
 # ── rss_sources writes ────────────────────────────────────────────────────────
@@ -462,6 +512,16 @@ def log_send(
 
 
 # ── monitoring ────────────────────────────────────────────────────────────────
+
+def get_last_ok_send_at(db: sqlite3.Connection) -> Optional[datetime]:
+    """Return the timestamp of the most recent successful Telegram send, or None."""
+    row = db.execute(
+        "SELECT sent_at FROM telegram_sends WHERE ok=1 ORDER BY sent_at DESC LIMIT 1"
+    ).fetchone()
+    if not row:
+        return None
+    return datetime.fromisoformat(row["sent_at"].replace("Z", "+00:00"))
+
 
 def get_source_stats(db: sqlite3.Connection) -> dict[str, int]:
     """Return counts of enabled sources grouped by status: ok / backoff / dead."""

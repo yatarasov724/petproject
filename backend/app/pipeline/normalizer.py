@@ -202,6 +202,11 @@ def normalize(
     )
 
 
+def make_hash(sorted_tokens: list[str], published_at: datetime) -> str:
+    """Public alias for _make_hash — for callers that build RawArticle outside normalize()."""
+    return _make_hash(sorted_tokens, published_at)
+
+
 def tokenize(title: str) -> list[str]:
     """
     Public function — used by both normalize() and dedup comparisons.

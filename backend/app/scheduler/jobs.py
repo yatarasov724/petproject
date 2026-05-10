@@ -14,12 +14,15 @@ Each job:
 
 import logging
 from collections import Counter
+from datetime import datetime, timezone
 
 from app.core import metrics
+import app.core.tg_client as _tg_client
 from app.core.alerting import send_ops as _send_ops
 from app.db.database import get_db
 from app.db import queries
 from app.pipeline.fetcher import fetch_all
+from app.pipeline.tg_fetcher import fetch_all_tg
 from app.pipeline.orchestrator import process
 from app.pipeline.relevance import is_russia_relevant
 from app.telegram import client as tg
@@ -29,6 +32,12 @@ logger = logging.getLogger(__name__)
 
 # Dead-source IDs we've already alerted about — reset on service restart.
 _alerted_dead: set[int] = set()
+
+# Silence alerting state — reset on service restart.
+_SILENCE_WARN_HOURS  = 2   # show ⚠️ in heartbeat text
+_SILENCE_ALERT_HOURS = 3   # send dedicated ops alert
+_SILENCE_ALERT_COOLDOWN_H = 2  # don't re-fire the dedicated alert within this window
+_last_silence_alert: datetime | None = None
 
 _DIGEST_LIMIT     = 10  # max clusters in the digest
 _DIGEST_PRE_FETCH = 30  # fetch 3× before RF filter to have enough candidates
@@ -43,6 +52,12 @@ async def poll_job() -> None:
     try:
         articles = await fetch_all(db)
         metrics.inc(metrics.ARTICLES_FETCHED, len(articles))
+
+        tg_client = _tg_client.get()
+        if tg_client is not None:
+            tg_articles = await fetch_all_tg(db, tg_client)
+            metrics.inc(metrics.ARTICLES_FETCHED, len(tg_articles))
+            articles.extend(tg_articles)
 
         counts: Counter[str] = Counter()
         for article in articles:
@@ -89,10 +104,10 @@ def cleanup_job() -> None:
 async def heartbeat_job() -> None:
     """
     Send a compact status line to the ops chat every 5 minutes.
-    Also fires a one-time alert for each source that has become dead.
+    Also fires alerts for dead sources and publish silence.
     No-ops if TELEGRAM_OPS_CHAT_ID is not configured.
     """
-    global _alerted_dead
+    global _alerted_dead, _last_silence_alert
 
     db = get_db()
     try:
@@ -106,7 +121,19 @@ async def heartbeat_job() -> None:
         hours, rem     = divmod(uptime_s, 3600)
         minutes        = rem // 60
 
-        header = "🚨" if dead_n else "✅"
+        # ── silence tracking ─────────────────────────────────────────────────
+        last_ok = queries.get_last_ok_send_at(db)
+        now = datetime.now(timezone.utc)
+        if last_ok:
+            silence_s = (now - last_ok).total_seconds()
+            sil_h, sil_rem = divmod(int(silence_s), 3600)
+            sil_m = sil_rem // 60
+            last_sent_str = f"{sil_h}h {sil_m}m ago" if sil_h else f"{sil_m}m ago"
+        else:
+            silence_s = float("inf")
+            last_sent_str = "never"
+
+        header = "🚨" if dead_n else ("⚠️" if silence_s >= _SILENCE_WARN_HOURS * 3600 else "✅")
 
         source_parts = [f"{ok_n}/{total_n} ok"]
         if backoff_n:
@@ -121,11 +148,32 @@ async def heartbeat_job() -> None:
             f"{header} MOEX parser — alive\n"
             f"⏱ uptime: {hours}h {minutes}m\n"
             f"📡 sources: {' · '.join(source_parts)}\n"
-            f"📊 published: {tg_ok} total · {tg_fail} failed"
+            f"📊 published: {tg_ok} total · {tg_fail} failed\n"
+            f"🕐 last msg: {last_sent_str}"
         )
         await _send_ops(text)
 
-        # One-time alert per dead source (resets on service restart).
+        # ── silence alert (deduplicated by cooldown) ──────────────────────────
+        if silence_s >= _SILENCE_ALERT_HOURS * 3600:
+            cooldown_passed = (
+                _last_silence_alert is None
+                or (now - _last_silence_alert).total_seconds() >= _SILENCE_ALERT_COOLDOWN_H * 3600
+            )
+            if cooldown_passed:
+                sil_h, sil_rem = divmod(int(silence_s), 3600)
+                sil_m = sil_rem // 60
+                await _send_ops(
+                    f"⚠️ No messages published for {sil_h}h {sil_m}m\n"
+                    f"Pipeline is running but nothing passed relevance/AI gate.\n"
+                    f"Check: /health or logs for 'relevance_gate_silence' / 'ai_gate_silence'."
+                )
+                _last_silence_alert = now
+                logger.warning(
+                    "silence alert fired: no publish for %.0f h", silence_s / 3600,
+                    extra={"event": "silence_alert", "silence_hours": round(silence_s / 3600, 1)},
+                )
+
+        # ── one-time alert per dead source (resets on service restart) ────────
         dead_sources = queries.get_dead_sources(db)
         for src in dead_sources:
             if src["id"] not in _alerted_dead:

@@ -37,5 +37,5 @@ async def send_ops(text: str) -> None:
                     logger.warning(
                         "ops alert failed: HTTP %d — %s", resp.status, body[:120]
                     )
-    except Exception:
-        logger.warning("ops alert dropped", exc_info=True)
+    except Exception as exc:
+        logger.warning("ops alert dropped: %s", exc, exc_info=True)

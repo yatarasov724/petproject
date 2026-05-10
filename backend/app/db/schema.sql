@@ -9,9 +9,15 @@ CREATE TABLE IF NOT EXISTS rss_sources (
     url         TEXT    NOT NULL UNIQUE,
     enabled     INTEGER NOT NULL DEFAULT 1,
 
-    -- HTTP conditional GET
+    -- 'rss' or 'telegram'
+    source_type     TEXT NOT NULL DEFAULT 'rss',
+
+    -- HTTP conditional GET (RSS only)
     etag            TEXT,
     last_modified   TEXT,
+
+    -- Telegram: last seen message ID (telegram only)
+    tg_last_msg_id  INTEGER NOT NULL DEFAULT 0,
 
     -- backoff
     error_count     INTEGER NOT NULL DEFAULT 0,

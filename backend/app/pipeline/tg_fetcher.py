@@ -1,0 +1,148 @@
+"""
+Telegram channel polling via Telethon.
+
+Each poll cycle fetches the last _MAX_MESSAGES messages from every active
+Telegram channel (source_type='telegram'), starting from the last seen
+message ID. Messages are converted to RawArticle and returned for the
+main pipeline (dedup → cluster → score → publish).
+
+Connection is managed externally (app/core/tg_client.py) so the session
+stays alive across poll cycles.
+"""
+
+import asyncio
+import logging
+import sqlite3
+from datetime import timezone
+from typing import Any
+
+from telethon import TelegramClient
+
+from app.db import queries
+from app.pipeline.normalizer import RawArticle, tokenize, make_hash
+
+logger = logging.getLogger(__name__)
+
+_MAX_MESSAGES = 20  # per channel per cycle
+
+# Channel entity cache — avoids redundant API resolution each 60 s.
+# Keyed by username; reset on service restart (acceptable stale window: never).
+_entity_cache: dict[str, Any] = {}
+
+
+async def fetch_all_tg(
+    db: sqlite3.Connection,
+    client: TelegramClient,
+) -> list[RawArticle]:
+    channels = queries.get_active_tg_channels(db)
+    if not channels:
+        return []
+
+    tasks = [_fetch_channel(client, db, ch) for ch in channels]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    articles: list[RawArticle] = []
+    for channel, result in zip(channels, results):
+        if isinstance(result, Exception):
+            logger.error(
+                "TG fetch error for %s: %s",
+                channel["name"],
+                result,
+                extra={"event": "tg_fetch_error", "source": channel["name"]},
+            )
+            queries.update_source_error(db, channel["id"])
+        else:
+            articles.extend(result)  # type: ignore[arg-type]
+
+    logger.info(
+        "TG poll: %d channels, %d articles",
+        len(channels),
+        len(articles),
+        extra={"event": "tg_poll_complete", "channels": len(channels), "articles": len(articles)},
+    )
+    return articles
+
+
+async def _fetch_channel(
+    client: TelegramClient,
+    db: sqlite3.Connection,
+    source: sqlite3.Row,
+) -> list[RawArticle]:
+    username   = source["url"].removeprefix("tg://")
+    source_id  = source["id"]
+    source_name = source["name"]
+    last_msg_id = source["tg_last_msg_id"] or 0
+
+    try:
+        if username not in _entity_cache:
+            _entity_cache[username] = await client.get_entity(username)
+        entity = _entity_cache[username]
+
+        messages = await client.get_messages(
+            entity,
+            limit=_MAX_MESSAGES,
+            min_id=last_msg_id,
+        )
+    except Exception as exc:
+        logger.warning(
+            "[%s] Telethon fetch error: %s",
+            source_name,
+            exc,
+            extra={"event": "tg_channel_error", "source": source_name},
+        )
+        raise  # propagate to gather() exception handler
+
+    if not messages:
+        queries.update_tg_channel_ok(db, source_id, last_msg_id)
+        return []
+
+    articles: list[RawArticle] = []
+    new_last_id = last_msg_id
+
+    for msg in messages:  # type: ignore[union-attr]
+        if not msg.text or len(msg.text) < 20:
+            continue
+
+        text = msg.text.strip()
+        # First non-empty line as the headline (capped at 150 chars)
+        first_line = next(
+            (line.strip() for line in text.split("\n") if line.strip()),
+            text[:150],
+        )[:150]
+
+        tokens = tokenize(first_line)
+        if not tokens:
+            continue
+
+        published_at = msg.date
+        if published_at.tzinfo is None:
+            published_at = published_at.replace(tzinfo=timezone.utc)
+
+        articles.append(RawArticle(
+            source_id=source_id,
+            source_name=source_name,
+            title=first_line,
+            url=f"https://t.me/{username}/{msg.id}",
+            published_at=published_at,
+            raw_hash=make_hash(tokens, published_at),
+            title_tokens=" ".join(tokens),
+            content=text[:500],
+        ))
+
+        if msg.id > new_last_id:
+            new_last_id = msg.id
+
+    queries.update_tg_channel_ok(db, source_id, new_last_id)
+    logger.info(
+        "[%s] fetched %d messages → %d articles",
+        source_name,
+        len(messages),  # type: ignore[arg-type]
+        len(articles),
+        extra={
+            "event":   "tg_channel_fetched",
+            "source":  source_name,
+            "msgs":    len(messages),  # type: ignore[arg-type]
+            "articles": len(articles),
+        },
+    )
+    return articles

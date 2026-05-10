@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core import logging_setup, metrics
+import app.core.tg_client as _tg_client
 from app.db.database import init_db, get_db
 from app.db.queries import seed_sources
 from app.scheduler import runner
@@ -58,6 +59,7 @@ async def startup() -> None:
     finally:
         db.close()
 
+    await _tg_client.connect()  # no-op if TG credentials are not configured
     runner.start()
     logger.info("app started", extra={"event": "app_started"})
 
@@ -65,6 +67,7 @@ async def startup() -> None:
 @app.on_event("shutdown")
 async def shutdown() -> None:
     runner.stop()
+    await _tg_client.disconnect()
     logger.info("app stopped", extra={"event": "app_stopped"})
 
 
