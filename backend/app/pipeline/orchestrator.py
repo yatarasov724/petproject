@@ -224,12 +224,22 @@ async def _run(db: sqlite3.Connection, article: RawArticle) -> ArticleResult:
         recent_tokens = queries.get_recently_sent_title_tokens(
             db, within_hours=COOLDOWN_HOURS, exclude_cluster_id=cluster["id"]
         )
+        cluster_tokens = cluster["title_tokens"]
         for sent_tokens in recent_tokens:
-            if dedup.jaccard(cluster["title_tokens"], sent_tokens) >= dedup.JACCARD_THRESHOLD:
+            j = dedup.jaccard(cluster_tokens, sent_tokens)
+            c, shared = dedup.containment(cluster_tokens, sent_tokens)
+            is_near_dup = j >= dedup.JACCARD_THRESHOLD or (
+                shared >= dedup.CONTAINMENT_MIN_SHARED and c >= dedup.CONTAINMENT_THRESHOLD
+            )
+            if is_near_dup:
                 metrics.inc(metrics.EVENTS_SILENCED)
                 logger.info(
-                    "dup guard: cross-cluster near-dup for cluster #%d, silencing",
+                    "dup guard: cross-cluster near-dup for cluster #%d "
+                    "(jaccard=%.2f containment=%.2f shared=%d), silencing",
                     cluster["id"],
+                    j,
+                    c,
+                    shared,
                     extra={"event": "dup_guard_cross_cluster", "cluster_id": cluster["id"]},
                 )
                 return ArticleResult(

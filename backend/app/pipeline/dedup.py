@@ -12,6 +12,15 @@ Two-stage check, applied in order (cheapest first):
     from the last NEAR_DEDUP_WINDOW_HOURS hours.
     Catches: paraphrases, shortened/expanded versions of the same story.
 
+  Stage 2b — Near-dedup via containment (O(N) in-memory, after Jaccard)
+    Containment = |A ∩ B| / min(|A|, |B|) — measures how much of the
+    SMALLER token set appears in the LARGER one.
+    Catches: one source uses a short title ("ЕС вводит санкции против РФ")
+    while another uses a long one ("ЕС 11 мая введет санкции против РФ за
+    эвакуацию детей из зон"). Jaccard falls below threshold because the large
+    denominator dilutes the score (3/9 ≈ 0.33), but containment stays high
+    (3/4 = 0.75) since the short title is almost fully contained in the long one.
+
 Why Jaccard threshold = 0.35?
 
   Too high (≥ 0.6):  misses paraphrases — Russian inflection means
@@ -26,6 +35,17 @@ Why Jaccard threshold = 0.35?
 
   If the system produces too many false positives: raise to 0.40.
   If it misses obvious paraphrases: lower to 0.30.
+
+Why containment threshold = 0.65 with min 3 shared tokens?
+
+  The min-shared guard prevents false positives when very short titles
+  (1-2 tokens) coincidentally overlap (e.g. "газпром дивиденды" flagging
+  every dividend story). Requiring 3 shared tokens means both the company
+  and the event type must align. 0.65 catches cases where a 4-token title
+  is ≥ 65% covered by a seen 8-token title (≥ 3 tokens shared).
+
+  False-positive risk ("Газпром снизил дивиденды" vs "Сбербанк снизил
+  дивиденды"): only 2 shared tokens → blocked by the min-shared guard. ✓
 """
 
 import logging
@@ -42,6 +62,10 @@ logger = logging.getLogger(__name__)
 JACCARD_THRESHOLD       = 0.35
 NEAR_DEDUP_WINDOW_HOURS = 4     # only compare against articles seen in this window
 NEAR_DEDUP_MAX_POOL     = 1000  # max rows loaded for Jaccard comparison (caps O(N) scan)
+
+# Containment-based near-dedup (Stage 2b) — catches length-asymmetric duplicates
+CONTAINMENT_THRESHOLD   = 0.65  # fraction of the shorter title's tokens that must appear in the longer
+CONTAINMENT_MIN_SHARED  = 3     # minimum overlapping tokens (guards against trivial 1-2 token matches)
 
 
 # ── result type ───────────────────────────────────────────────────────────────
@@ -63,7 +87,7 @@ class DedupResult:
 
 def check(db: sqlite3.Connection, article: RawArticle) -> DedupResult:
     """
-    Run both dedup stages. Returns a DedupResult.
+    Run all dedup stages. Returns a DedupResult.
     Does NOT write to DB — call record() separately after deciding to keep.
     """
     # Stage 1: exact
@@ -76,22 +100,36 @@ def check(db: sqlite3.Connection, article: RawArticle) -> DedupResult:
         )
         return DedupResult(is_duplicate=True, reason=DupReason.EXACT, score=0.0)
 
-    # Stage 2: near
+    # Stage 2: near (Jaccard)
     recent_tokens = queries.get_recent_title_tokens(
         db, within_hours=NEAR_DEDUP_WINDOW_HOURS, limit=NEAR_DEDUP_MAX_POOL
     )
-    best_score, _ = _best_jaccard(article.title_tokens, recent_tokens)
+    best_jaccard, _ = _best_jaccard(article.title_tokens, recent_tokens)
 
-    if best_score >= JACCARD_THRESHOLD:
+    if best_jaccard >= JACCARD_THRESHOLD:
         logger.debug(
             "[%s] near dup (jaccard=%.2f): %.60s",
             article.source_name,
-            best_score,
+            best_jaccard,
             article.title,
         )
-        return DedupResult(is_duplicate=True, reason=DupReason.NEAR, score=best_score)
+        return DedupResult(is_duplicate=True, reason=DupReason.NEAR, score=best_jaccard)
 
-    return DedupResult(is_duplicate=False, reason=DupReason.UNIQUE, score=best_score)
+    # Stage 2b: near (containment) — catches length-asymmetric duplicates where
+    # a short title from one source is nearly contained in a longer title from another,
+    # but Jaccard stays low due to the large token-union denominator.
+    best_cont, best_shared = _best_containment(article.title_tokens, recent_tokens)
+    if best_shared >= CONTAINMENT_MIN_SHARED and best_cont >= CONTAINMENT_THRESHOLD:
+        logger.debug(
+            "[%s] near dup (containment=%.2f shared=%d): %.60s",
+            article.source_name,
+            best_cont,
+            best_shared,
+            article.title,
+        )
+        return DedupResult(is_duplicate=True, reason=DupReason.NEAR, score=best_cont)
+
+    return DedupResult(is_duplicate=False, reason=DupReason.UNIQUE, score=best_jaccard)
 
 
 def record(
@@ -138,6 +176,21 @@ def jaccard(tokens_a: str, tokens_b: str) -> float:
     return intersection / union if union else 0.0
 
 
+def containment(tokens_a: str, tokens_b: str) -> tuple[float, int]:
+    """
+    Containment similarity: |A ∩ B| / min(|A|, |B|).
+    Returns (score, shared_count). Returns (0.0, 0) if either string is empty.
+    Measures how much of the SMALLER title's tokens appear in the LARGER one.
+    """
+    if not tokens_a or not tokens_b:
+        return 0.0, 0
+    set_a = set(tokens_a.split())
+    set_b = set(tokens_b.split())
+    shared = set_a & set_b
+    min_size = min(len(set_a), len(set_b))
+    return (len(shared) / min_size if min_size else 0.0), len(shared)
+
+
 def _best_jaccard(
     candidate_tokens: str,
     pool: list[str],
@@ -159,3 +212,26 @@ def _best_jaccard(
                 break   # found a definitive near-dup, no need to scan further
 
     return best_score, best_match
+
+
+def _best_containment(
+    candidate_tokens: str,
+    pool: list[str],
+) -> tuple[float, int]:
+    """
+    Find the maximum containment score between candidate and every string in pool.
+    Returns (best_score, best_shared_count).
+    Early-exits once a definitive containment near-dup is found.
+    """
+    best_score  = 0.0
+    best_shared = 0
+
+    for existing_tokens in pool:
+        score, shared = containment(candidate_tokens, existing_tokens)
+        if score > best_score or (score == best_score and shared > best_shared):
+            best_score  = score
+            best_shared = shared
+            if best_shared >= CONTAINMENT_MIN_SHARED and best_score >= CONTAINMENT_THRESHOLD:
+                break   # found a definitive containment near-dup
+
+    return best_score, best_shared
