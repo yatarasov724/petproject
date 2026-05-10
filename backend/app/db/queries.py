@@ -365,7 +365,8 @@ def get_top_sent_clusters(
     cutoff = _iso(datetime.now(timezone.utc) - timedelta(hours=within_hours))
     return db.execute(
         """
-        SELECT id, canonical_title, best_score, source_count, tickers, last_sent_at
+        SELECT id, canonical_title, best_score, source_count,
+               tickers, keywords, title_tokens, last_sent_at
         FROM   event_clusters
         WHERE  last_sent_at >= ?
           AND  status IN ('published', 'updated')

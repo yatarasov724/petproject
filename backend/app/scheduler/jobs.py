@@ -29,6 +29,49 @@ logger = logging.getLogger(__name__)
 # Dead-source IDs we've already alerted about — reset on service restart.
 _alerted_dead: set[int] = set()
 
+# ── digest relevance filter ───────────────────────────────────────────────────
+# Lemmatized tokens that signal a cluster is Russia/MOEX-relevant.
+# Checked against both `keywords` (top-12 by length) and `title_tokens`
+# (full anchor token set) so short tokens like "рф" are never missed.
+
+_RUSSIA_MARKET_TOKENS: frozenset[str] = frozenset({
+    # Country / government
+    "рф", "россия", "российский",
+    "правительство", "минфин", "цб",
+    # Key officials
+    "путин", "мишустин", "набиуллина", "новак", "силуанов",
+    "греф", "миллер", "сечин", "белоусов",
+    # Top MOEX companies
+    "газпром", "сбербанк", "лукойл", "роснефть", "новатэк",
+    "норникель", "яндекс", "татнефть", "транснефть", "алроса",
+    "северсталь", "нлмк", "ммк", "сургутнефтегаз", "аэрофлот",
+    "магнит", "мтс", "ростелеком", "фосагро", "озон",
+    "тинькофф", "мосбиржа", "втб", "полюс", "мечел", "селигдар",
+    # Russian financial instruments
+    "рубль", "офз",
+    # Energy — critical for Russian budget and MOEX heavyweights
+    "нефть", "опек",
+})
+
+_DIGEST_LIMIT    = 10   # max clusters in the digest
+_DIGEST_PRE_FETCH = 30  # fetch 3× before RF filter to have enough candidates
+
+
+def _is_russia_relevant(cluster) -> bool:
+    """
+    Return True if the cluster is relevant to the Russian market / MOEX.
+    Checks keyword tokens from both the accumulated `keywords` field
+    and the anchor article's `title_tokens`.
+    """
+    # A cluster with MOEX tickers is definitively Russia-relevant.
+    if cluster["tickers"]:
+        return True
+    tokens = (
+        set((cluster["keywords"]     or "").split())
+        | set((cluster["title_tokens"] or "").split())
+    )
+    return bool(tokens & _RUSSIA_MARKET_TOKENS)
+
 
 async def poll_job() -> None:
     """
@@ -142,14 +185,23 @@ async def digest_job(within_hours: int, label: str) -> None:
     Send a daily digest of the top published events to the main channel.
 
     within_hours — how far back to look for sent clusters.
-    label        — display time shown in the header, e.g. "18:30" or "22:00" (MSK).
+    label        — display time shown in the header, e.g. "22:00" (MSK).
+
+    Selection:
+      1. Fetch up to _DIGEST_PRE_FETCH candidates ordered by score*source_count.
+      2. Keep only Russia/MOEX-relevant ones via _is_russia_relevant().
+      3. Take the top _DIGEST_LIMIT of what remains.
     """
     db = get_db()
     try:
-        clusters = queries.get_top_sent_clusters(db, within_hours=within_hours, limit=10)
+        candidates = queries.get_top_sent_clusters(
+            db, within_hours=within_hours, limit=_DIGEST_PRE_FETCH
+        )
+        clusters = [c for c in candidates if _is_russia_relevant(c)][:_DIGEST_LIMIT]
+
         if not clusters:
             logger.info(
-                "digest_job: no sent clusters in the last %dh — skipping",
+                "digest_job: no Russia-relevant clusters in the last %dh — skipping",
                 within_hours,
                 extra={"event": "digest_skipped", "within_hours": within_hours},
             )
