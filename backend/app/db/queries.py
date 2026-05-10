@@ -352,8 +352,8 @@ def get_cluster(
 
 def get_top_sent_clusters(
     db: sqlite3.Connection,
-    within_hours: int = 12,
-    limit: int = 7,
+    within_hours: int = 24,
+    limit: int = 10,
 ) -> list[sqlite3.Row]:
     """
     Return the top published clusters for the daily digest.

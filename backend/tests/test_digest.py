@@ -93,11 +93,11 @@ class TestGetTopSentClusters:
         assert titles[0] == "Важное событие"
 
     def test_respects_limit(self, db):
-        for i in range(5):
+        for i in range(15):
             _insert_cluster(db, title=f"Событие {i}", sent_minutes_ago=30)
 
-        result = queries.get_top_sent_clusters(db, within_hours=12, limit=3)
-        assert len(result) == 3
+        result = queries.get_top_sent_clusters(db, within_hours=24, limit=10)
+        assert len(result) == 10
 
     def test_empty_when_no_sent_clusters(self, db):
         result = queries.get_top_sent_clusters(db, within_hours=12, limit=7)

@@ -146,7 +146,7 @@ async def digest_job(within_hours: int, label: str) -> None:
     """
     db = get_db()
     try:
-        clusters = queries.get_top_sent_clusters(db, within_hours=within_hours, limit=7)
+        clusters = queries.get_top_sent_clusters(db, within_hours=within_hours, limit=10)
         if not clusters:
             logger.info(
                 "digest_job: no sent clusters in the last %dh — skipping",
