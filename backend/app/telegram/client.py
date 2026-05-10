@@ -33,6 +33,7 @@ from app.telegram.formatter import format_message
 logger = logging.getLogger(__name__)
 
 _BASE_URL          = "https://api.telegram.org/bot{token}/sendMessage"
+_EDIT_URL          = "https://api.telegram.org/bot{token}/editMessageText"
 _TIMEOUT           = aiohttp.ClientTimeout(total=10)
 _MAX_RETRIES       = 3
 _RETRY_BASE_S      = 2    # backoff: 2s → 4s → 8s
@@ -40,6 +41,41 @@ _MAX_RETRY_AFTER_S = 30   # cap Retry-After sleep
 
 
 # ── public API ────────────────────────────────────────────────────────────────
+
+async def edit_message(message_id: int, text: str) -> bool:
+    """
+    Edit an already-sent Telegram message in place.
+    Used for AI enrichment: send plain message first, then edit when AI responds.
+    Returns True on success or if already up-to-date.
+    """
+    if settings.dry_run or message_id <= 0:
+        return True
+
+    url = _EDIT_URL.format(token=settings.telegram_bot_token)
+    payload = {
+        "chat_id":                  settings.telegram_channel_id,
+        "message_id":               message_id,
+        "text":                     text,
+        "parse_mode":               "MarkdownV2",
+        "disable_web_page_preview": True,
+    }
+    try:
+        async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+            async with session.post(url, json=payload) as resp:
+                body = await resp.json(content_type=None)
+                ok = resp.status == 200 and body.get("ok")
+                if not ok:
+                    desc = body.get("description", "")
+                    if "message is not modified" in desc:
+                        return True
+                    logger.warning(
+                        "editMessageText failed message_id=%d: %s", message_id, desc,
+                    )
+                return bool(ok)
+    except Exception as exc:
+        logger.warning("editMessageText error message_id=%d: %s", message_id, exc)
+        return False
+
 
 async def send_text(text: str) -> Optional[int]:
     """

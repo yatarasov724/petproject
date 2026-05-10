@@ -44,13 +44,14 @@ async def fetch_all_tg(
     articles: list[RawArticle] = []
     for channel, result in zip(channels, results):
         if isinstance(result, Exception):
-            logger.error(
-                "TG fetch error for %s: %s",
+            # Transient errors (connection reset, timeout) are logged but do NOT
+            # increment error_count — channels stay ok and are retried next cycle.
+            logger.warning(
+                "TG fetch skipped for %s: %s",
                 channel["name"],
                 result,
                 extra={"event": "tg_fetch_error", "source": channel["name"]},
             )
-            queries.update_source_error(db, channel["id"])
         else:
             articles.extend(result)  # type: ignore[arg-type]
 
@@ -90,7 +91,7 @@ async def _fetch_channel(
             exc,
             extra={"event": "tg_channel_error", "source": source_name},
         )
-        raise  # propagate to gather() exception handler
+        return []  # retry next cycle; don't touch backoff state
 
     if not messages:
         queries.update_tg_channel_ok(db, source_id, last_msg_id)

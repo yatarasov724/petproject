@@ -23,11 +23,12 @@ from app.pipeline.normalizer import RawArticle
 @pytest.fixture(autouse=True)
 def _no_real_ai():
     """
-    Prevent background OpenRouter HTTP calls in every test by default.
-    Tests that explicitly patch analyzer.analyze override this fixture's mock
-    for the duration of their own patch context.
+    Prevent background OpenRouter HTTP calls in every test.
+
+    Returns None so _ai_enrich() exits early (no format_message, no editMessageText).
+    Tests that need a real AIAnalysis object override this patch explicitly.
     """
-    with patch("app.ai.analyzer.analyze"):
+    with patch("app.ai.analyzer.analyze", return_value=None):
         yield
 
 _SCHEMA_PATH = Path(__file__).parent.parent / "app" / "db" / "schema.sql"

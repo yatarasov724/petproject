@@ -367,129 +367,83 @@ class TestAtomicClusterDedup:
 
 class TestAIGate:
     """
-    Verify that AI analysis acts as a synchronous gate before tg.send().
-    Empty affects → SILENCE. Non-empty affects → send proceeds with ai_analysis.
-    AI errors or missing API key → send proceeds without ai_analysis (fallback).
+    Verify fire-and-forget AI enrichment behavior.
+
+    tg.send() is always called immediately with ai_analysis=None.
+    When API key is set, a background task is spawned to call the AI
+    and edit the message via editMessageText once the LLM responds.
     """
 
     @pytest.mark.asyncio
-    async def test_ai_empty_affects_silences_article(self, db):
-        """AI returns empty affects → article is silenced, tg.send not called."""
-        from app.ai.analyzer import AIAnalysis
-
-        article = make_article(
-            title="ЦБ повысил ключевую ставку до 21 процента",
-            raw_hash="aig_empty_001",
-        )
-
-        send_calls: list = []
-
-        async def capture_send(**kwargs):
-            send_calls.append(kwargs)
-            return 1
-
-        no_impact = AIAnalysis(
-            title="", impact="neutral", emoji="⚪️",
-            summary="", market_effect="", affects="", tickers=[],
-        )
-
-        with (
-            patch("app.core.config.settings") as mock_settings,
-            patch("app.ai.analyzer.analyze", return_value=no_impact),
-            patch("app.telegram.client.send", side_effect=capture_send),
-        ):
-            mock_settings.openrouter_api_key = "test-key"
-            mock_settings.dry_run = False
-            result = await process(db, article)
-
-        assert result.outcome == Outcome.SILENCE
-        assert send_calls == [], "tg.send must not be called when AI gate silences"
-
-    @pytest.mark.asyncio
-    async def test_ai_with_affects_sends_with_analysis(self, db):
-        """AI returns non-empty affects → send proceeds with ai_analysis attached."""
-        from app.ai.analyzer import AIAnalysis
-
+    async def test_send_fires_immediately_without_ai(self, db):
+        """send() is called with ai_analysis=None — no blocking wait for LLM."""
         article = make_article(
             title="ЦБ повысил ключевую ставку до 21 процента",
             raw_hash="aig_send_001",
         )
-
         captured: list = []
 
         async def capture_send(**kwargs):
             captured.append(kwargs.get("ai_analysis"))
             return 1
 
-        analysis = AIAnalysis(
-            title="ЦБ повысил ставку", impact="negative", emoji="🔴",
-            summary="Влияет на банки", market_effect="Давление на акции", affects="акции · ОФЗ",
-            tickers=[],
-        )
-
-        with (
-            patch("app.core.config.settings") as mock_settings,
-            patch("app.ai.analyzer.analyze", return_value=analysis),
-            patch("app.telegram.client.send", side_effect=capture_send),
-        ):
-            mock_settings.openrouter_api_key = "test-key"
-            mock_settings.dry_run = False
+        # _no_real_ai autouse fixture suppresses create_task and analyze automatically.
+        with patch("app.telegram.client.send", side_effect=capture_send):
             result = await process(db, article)
 
         assert result.outcome == Outcome.SENT_NEW
-        assert len(captured) == 1
-        assert captured[0] is analysis, "send must receive the ai_analysis object"
+        assert captured == [None], "send must not wait for AI (fire-and-forget)"
 
     @pytest.mark.asyncio
     async def test_ai_failure_allows_send(self, db):
-        """If AI raises, the article is still sent (ai_analysis=None fallback)."""
+        """Send fires immediately even if API key is set — fire-and-forget, not blocking."""
         article = make_article(
             title="ЦБ повысил ключевую ставку до 21 процента",
             raw_hash="aig_fail_001",
         )
-
         captured: list = []
 
         async def capture_send(**kwargs):
             captured.append(kwargs.get("ai_analysis"))
             return 1
 
-        with (
-            patch("app.core.config.settings") as mock_settings,
-            patch("app.ai.analyzer.analyze", side_effect=RuntimeError("OpenRouter unreachable")),
-            patch("app.telegram.client.send", side_effect=capture_send),
-        ):
-            mock_settings.openrouter_api_key = "test-key"
-            mock_settings.dry_run = False
+        with patch("app.telegram.client.send", side_effect=capture_send):
             result = await process(db, article)
 
         assert result.outcome == Outcome.SENT_NEW
-        assert captured == [None], "send must be called with ai_analysis=None on AI failure"
+        assert captured == [None], "send must be called with ai_analysis=None"
 
     @pytest.mark.asyncio
-    async def test_no_api_key_skips_ai_gate(self, db):
-        """No openrouter_api_key → AI gate is bypassed, send proceeds."""
+    async def test_no_api_key_skips_background_task(self, db):
+        """No openrouter_api_key → background task is not scheduled."""
         article = make_article(
             title="ЦБ повысил ключевую ставку до 21 процента",
             raw_hash="aig_nokey_001",
         )
-
         captured: list = []
+        tasks_created: list = []
 
         async def capture_send(**kwargs):
             captured.append(kwargs.get("ai_analysis"))
             return 1
 
+        def capture_task(coro, **kw):
+            tasks_created.append(coro)
+            if hasattr(coro, "close"):
+                coro.close()
+            return None
+
         with (
-            patch("app.core.config.settings") as mock_settings,
+            patch("app.pipeline.orchestrator.settings") as mock_settings,
             patch("app.telegram.client.send", side_effect=capture_send),
+            patch("asyncio.create_task", side_effect=capture_task),
         ):
             mock_settings.openrouter_api_key = ""
-            mock_settings.dry_run = False
             result = await process(db, article)
 
         assert result.outcome == Outcome.SENT_NEW
         assert captured == [None], "send must be called with ai_analysis=None when no API key"
+        assert tasks_created == [], "no background task when API key is absent"
 
 
 # ── Russia/MOEX relevance gate ────────────────────────────────────────────────
