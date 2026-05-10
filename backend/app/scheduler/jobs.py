@@ -21,6 +21,7 @@ from app.db.database import get_db
 from app.db import queries
 from app.pipeline.fetcher import fetch_all
 from app.pipeline.orchestrator import process
+from app.pipeline.relevance import is_russia_relevant
 from app.telegram import client as tg
 from app.telegram.formatter import format_digest
 
@@ -29,48 +30,8 @@ logger = logging.getLogger(__name__)
 # Dead-source IDs we've already alerted about — reset on service restart.
 _alerted_dead: set[int] = set()
 
-# ── digest relevance filter ───────────────────────────────────────────────────
-# Lemmatized tokens that signal a cluster is Russia/MOEX-relevant.
-# Checked against both `keywords` (top-12 by length) and `title_tokens`
-# (full anchor token set) so short tokens like "рф" are never missed.
-
-_RUSSIA_MARKET_TOKENS: frozenset[str] = frozenset({
-    # Country / government
-    "рф", "россия", "российский",
-    "правительство", "минфин", "цб",
-    # Key officials
-    "путин", "мишустин", "набиуллина", "новак", "силуанов",
-    "греф", "миллер", "сечин", "белоусов",
-    # Top MOEX companies
-    "газпром", "сбербанк", "лукойл", "роснефть", "новатэк",
-    "норникель", "яндекс", "татнефть", "транснефть", "алроса",
-    "северсталь", "нлмк", "ммк", "сургутнефтегаз", "аэрофлот",
-    "магнит", "мтс", "ростелеком", "фосагро", "озон",
-    "тинькофф", "мосбиржа", "втб", "полюс", "мечел", "селигдар",
-    # Russian financial instruments
-    "рубль", "офз",
-    # Energy — critical for Russian budget and MOEX heavyweights
-    "нефть", "опек",
-})
-
-_DIGEST_LIMIT    = 10   # max clusters in the digest
+_DIGEST_LIMIT     = 10  # max clusters in the digest
 _DIGEST_PRE_FETCH = 30  # fetch 3× before RF filter to have enough candidates
-
-
-def _is_russia_relevant(cluster) -> bool:
-    """
-    Return True if the cluster is relevant to the Russian market / MOEX.
-    Checks keyword tokens from both the accumulated `keywords` field
-    and the anchor article's `title_tokens`.
-    """
-    # A cluster with MOEX tickers is definitively Russia-relevant.
-    if cluster["tickers"]:
-        return True
-    tokens = (
-        set((cluster["keywords"]     or "").split())
-        | set((cluster["title_tokens"] or "").split())
-    )
-    return bool(tokens & _RUSSIA_MARKET_TOKENS)
 
 
 async def poll_job() -> None:
@@ -197,7 +158,7 @@ async def digest_job(within_hours: int, label: str) -> None:
         candidates = queries.get_top_sent_clusters(
             db, within_hours=within_hours, limit=_DIGEST_PRE_FETCH
         )
-        clusters = [c for c in candidates if _is_russia_relevant(c)][:_DIGEST_LIMIT]
+        clusters = [c for c in candidates if is_russia_relevant(c)][:_DIGEST_LIMIT]
 
         if not clusters:
             logger.info(

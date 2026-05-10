@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from app.db import queries
 from app.ai.digest import _validate, DigestAnalysis
 from app.telegram.formatter import format_digest
-from app.scheduler.jobs import _is_russia_relevant
+from app.pipeline.relevance import is_russia_relevant
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -154,7 +154,7 @@ def _make_row(title: str, score: int = 50, source_count: int = 2) -> sqlite3.Row
     return conn.execute("SELECT * FROM t").fetchone()
 
 
-# ── _is_russia_relevant ───────────────────────────────────────────────────────
+# ── is_russia_relevant ───────────────────────────────────────────────────────
 
 def _fake_cluster(keywords: str, title_tokens: str = "", tickers: str = ""):
     """Create a minimal dict that quacks like a sqlite3.Row for the filter."""
@@ -167,44 +167,44 @@ def _fake_cluster(keywords: str, title_tokens: str = "", tickers: str = ""):
 class TestIsRussiaRelevant:
     def test_passes_when_has_tickers(self):
         row = _fake_cluster(keywords="", tickers="GAZP")
-        assert _is_russia_relevant(row) is True
+        assert is_russia_relevant(row) is True
 
     def test_passes_for_цб(self):
         row = _fake_cluster(keywords="цб ставка снижение")
-        assert _is_russia_relevant(row) is True
+        assert is_russia_relevant(row) is True
 
     def test_passes_for_рф_in_title_tokens(self):
         # "рф" is short — may be absent from top-12 keywords but present in title_tokens
         row = _fake_cluster(keywords="санкция усиление", title_tokens="рф санкция усиление фицо")
-        assert _is_russia_relevant(row) is True
+        assert is_russia_relevant(row) is True
 
     def test_passes_for_company_name(self):
         row = _fake_cluster(keywords="транснефть дивиденд выплата")
-        assert _is_russia_relevant(row) is True
+        assert is_russia_relevant(row) is True
 
     def test_passes_for_нефть(self):
         row = _fake_cluster(keywords="нефть brent баррель дорожать")
-        assert _is_russia_relevant(row) is True
+        assert is_russia_relevant(row) is True
 
     def test_passes_for_опек(self):
         row = _fake_cluster(keywords="опек квота новак встреча")
-        assert _is_russia_relevant(row) is True
+        assert is_russia_relevant(row) is True
 
     def test_excludes_china_sanctions(self):
         row = _fake_cluster(keywords="ввести иран китайский компания санкция спутниковый сша")
-        assert _is_russia_relevant(row) is False
+        assert is_russia_relevant(row) is False
 
     def test_excludes_germany_news(self):
         row = _fake_cluster(keywords="бундесрат выплата заблокировать мерец премия")
-        assert _is_russia_relevant(row) is False
+        assert is_russia_relevant(row) is False
 
     def test_excludes_cuba_news(self):
         row = _fake_cluster(keywords="куба конгломерат санкция сша экономика")
-        assert _is_russia_relevant(row) is False
+        assert is_russia_relevant(row) is False
 
     def test_excludes_us_tariffs(self):
         row = _fake_cluster(keywords="администрация импорт иностранный пошлина решение трамп")
-        assert _is_russia_relevant(row) is False
+        assert is_russia_relevant(row) is False
 
 
 class TestFormatDigest:

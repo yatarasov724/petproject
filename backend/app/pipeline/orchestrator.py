@@ -41,6 +41,7 @@ from app.db import queries
 from app.pipeline import dedup, clusterer, scorer
 from app.pipeline.normalizer import RawArticle
 from app.pipeline.publish_decision import decide, Decision, COOLDOWN_HOURS
+from app.pipeline.relevance import is_russia_relevant
 from app.telegram import client as tg
 
 # Articles older than this are skipped before entering the pipeline.
@@ -260,6 +261,28 @@ async def _run(db: sqlite3.Connection, article: RawArticle) -> ArticleResult:
                 "score":      score_result.score,
                 "reason":     pub.reason,
                 "source":     article.source_name,
+            },
+        )
+        return ArticleResult(
+            Outcome.SILENCE, article.source_name, short,
+            score=score_result.score, cluster_id=cluster["id"],
+        )
+
+    # ── step 7.5: Russia/MOEX relevance gate ─────────────────────────────────
+    # Hard filter: only events touching the Russian market reach Telegram.
+    # Checked here (after clustering/scoring, before AI) so:
+    #   - Clustering/dedup still learns from all articles.
+    #   - AI calls are not wasted on irrelevant events.
+    if not is_russia_relevant(cluster):
+        metrics.inc(metrics.EVENTS_SILENCED)
+        logger.info(
+            "relevance gate: cluster #%d not RF/MOEX-relevant — silenced",
+            cluster["id"],
+            extra={
+                "event":      "relevance_gate_silence",
+                "cluster_id": cluster["id"],
+                "source":     article.source_name,
+                "title":      short,
             },
         )
         return ArticleResult(

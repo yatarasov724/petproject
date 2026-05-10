@@ -492,6 +492,71 @@ class TestAIGate:
         assert captured == [None], "send must be called with ai_analysis=None when no API key"
 
 
+# ── Russia/MOEX relevance gate ────────────────────────────────────────────────
+
+class TestRelevanceGate:
+    """
+    Verify that orchestrator step 7.5 (Russia/MOEX relevance gate) fires correctly.
+
+    The gate sits between publish_decision and the AI gate, so the article must
+    score above PUBLISH_THRESHOLD and receive a NEW_EVENT decision before the gate
+    can fire.  The gate checks cluster.keywords and cluster.title_tokens (both
+    contain lemmatized tokens) against _RUSSIA_MARKET_TOKENS.
+    """
+
+    @pytest.mark.asyncio
+    async def test_non_russia_article_is_silenced(self, db):
+        """
+        Article about US sanctions on Chinese companies — tier1 score (санкци),
+        no Russia/MOEX tokens → relevance gate fires → SILENCE, tg.send not called.
+        """
+        article = make_article(
+            title="США ввели санкции против китайских компаний из-за технологий",
+            raw_hash="rel_gate_001",
+        )
+        with patch("app.telegram.client.send", return_value=1) as mock_send:
+            result = await process(db, article)
+
+        assert result.outcome == Outcome.SILENCE
+        mock_send.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_russia_relevant_article_passes_gate(self, db):
+        """
+        Article with ЦБ token — gate passes and send proceeds.
+        """
+        article = make_article(
+            title="ЦБ повысил ключевую ставку до 21 процента",
+            raw_hash="rel_gate_002",
+        )
+        with patch("app.telegram.client.send", return_value=1) as mock_send:
+            result = await process(db, article)
+
+        assert result.outcome == Outcome.SENT_NEW
+        mock_send.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_moex_ticker_article_passes_gate(self, db):
+        """
+        A cluster that has a non-empty tickers column bypasses keyword matching
+        and is always considered Russia-relevant.  Simulate by inserting a cluster
+        row with a ticker directly, then check is_russia_relevant returns True.
+        """
+        from app.pipeline.relevance import is_russia_relevant
+
+        db.execute(
+            """
+            INSERT INTO event_clusters
+                (canonical_title, title_tokens, keywords, best_score,
+                 source_count, status, tickers)
+            VALUES ('Зарубежная новость', 'tok', 'tok', 50, 1, 'new', 'GAZP')
+            """
+        )
+        db.commit()
+        cluster = db.execute("SELECT * FROM event_clusters LIMIT 1").fetchone()
+        assert is_russia_relevant(cluster) is True
+
+
 # ── pre-publish dup guard ─────────────────────────────────────────────────────
 
 class TestDupGuardQueries:
