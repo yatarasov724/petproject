@@ -33,6 +33,10 @@ _RSS_SEEDS = [
     ("Investing",  "https://ru.investing.com/rss/news.rss"),
     ("MOEX",       "https://www.moex.com/export/news.aspx"),  # exchange bulletins
 
+    # ── tier 4: market community + official policy ────────────────────────────
+    ("Smartlab",   "https://smart-lab.ru/news/rss"),          # retail trader news/market events
+    ("Government", "http://government.ru/news/rss/"),          # official economic policy decisions
+
     # ── disabled (unreachable as of 2026-05) ─────────────────────────────────
     # ("RBC",     "https://rbc.ru/rss/news"),           # 404
     # ("Forbes",  "https://www.forbes.ru/rss"),         # 400
@@ -344,6 +348,32 @@ def get_cluster(
         "SELECT * FROM event_clusters WHERE id = ?",
         (cluster_id,),
     ).fetchone()
+
+
+def get_top_sent_clusters(
+    db: sqlite3.Connection,
+    within_hours: int = 12,
+    limit: int = 7,
+) -> list[sqlite3.Row]:
+    """
+    Return the top published clusters for the daily digest.
+
+    Selects clusters that were actually sent (last_sent_at is set) within the
+    window, ordered by (best_score * source_count) descending — the same signal
+    the publisher uses to decide importance.
+    """
+    cutoff = _iso(datetime.now(timezone.utc) - timedelta(hours=within_hours))
+    return db.execute(
+        """
+        SELECT id, canonical_title, best_score, source_count, tickers, last_sent_at
+        FROM   event_clusters
+        WHERE  last_sent_at >= ?
+          AND  status IN ('published', 'updated')
+        ORDER  BY best_score * source_count DESC
+        LIMIT  ?
+        """,
+        (cutoff, limit),
+    ).fetchall()
 
 
 # ── telegram_sends ────────────────────────────────────────────────────────────

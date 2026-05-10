@@ -21,6 +21,8 @@ from app.db.database import get_db
 from app.db import queries
 from app.pipeline.fetcher import fetch_all
 from app.pipeline.orchestrator import process
+from app.telegram import client as tg
+from app.telegram.formatter import format_digest
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +133,54 @@ async def heartbeat_job() -> None:
 
     except Exception:
         logger.exception("heartbeat_job crashed")
+    finally:
+        db.close()
+
+
+async def digest_job(within_hours: int, label: str) -> None:
+    """
+    Send a daily digest of the top published events to the main channel.
+
+    within_hours — how far back to look for sent clusters.
+    label        — display time shown in the header, e.g. "18:30" or "22:00" (MSK).
+    """
+    db = get_db()
+    try:
+        clusters = queries.get_top_sent_clusters(db, within_hours=within_hours, limit=7)
+        if not clusters:
+            logger.info(
+                "digest_job: no sent clusters in the last %dh — skipping",
+                within_hours,
+                extra={"event": "digest_skipped", "within_hours": within_hours},
+            )
+            return
+
+        from app.ai.digest import generate_digest
+        headlines = [c["canonical_title"] for c in clusters]
+        ai_digest = await generate_digest(headlines)
+
+        text = format_digest(list(clusters), ai_digest, label=label)
+        msg_id = await tg.send_text(text)
+
+        if msg_id is not None:
+            logger.info(
+                "digest sent",
+                extra={
+                    "event":       "digest_sent",
+                    "label":       label,
+                    "cluster_n":   len(clusters),
+                    "ai":          ai_digest is not None,
+                    "tg_msg_id":   msg_id,
+                },
+            )
+        else:
+            logger.error(
+                "digest send failed",
+                extra={"event": "digest_send_failed", "label": label},
+            )
+
+    except Exception:
+        logger.exception("digest_job crashed")
     finally:
         db.close()
 

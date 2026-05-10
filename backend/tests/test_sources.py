@@ -19,15 +19,20 @@ _FIXTURES_DIR = Path(__file__).parent / "fixtures" / "rss"
 
 # Map fixture filename stem → source name as it appears in _RSS_SEEDS
 _FIXTURE_SOURCES = {
-    "bfm":      "BFM",
-    "ria":      "RIA",
-    "izvestia": "Izvestia",
-    "gazeta":   "Gazeta",
-    "lenta":    "Lenta",
-    "rg":       "RG",
-    "investing": "Investing",
-    "moex":     "MOEX",
+    "bfm":        "BFM",
+    "ria":        "RIA",
+    "izvestia":   "Izvestia",
+    "gazeta":     "Gazeta",
+    "lenta":      "Lenta",
+    "rg":         "RG",
+    "investing":  "Investing",
+    "moex":       "MOEX",
+    "smartlab":   "Smartlab",
+    "government": "Government",
 }
+
+# Sources that only serve RSS over HTTP (HTTPS times out or is not supported)
+_HTTP_ONLY_SOURCES = {"Government"}
 
 
 # ── seed integrity ─────────────────────────────────────────────────────────────
@@ -42,17 +47,21 @@ class TestSeedIntegrity:
         assert len(urls) == len(set(urls)), f"Duplicate URLs in _RSS_SEEDS: {urls}"
 
     def test_all_urls_use_https(self):
-        bad = [(name, url) for name, url in _RSS_SEEDS if not url.startswith("https://")]
+        # government.ru RSS is HTTP-only (HTTPS times out)
+        bad = [
+            (name, url) for name, url in _RSS_SEEDS
+            if not url.startswith("https://") and name not in _HTTP_ONLY_SOURCES
+        ]
         assert not bad, f"Non-HTTPS URLs in seeds: {bad}"
 
     def test_all_names_non_empty(self):
         bad = [name for name, _ in _RSS_SEEDS if not name.strip()]
         assert not bad, "Empty name in _RSS_SEEDS"
 
-    def test_seed_count_at_least_13(self):
-        """Regression guard: ensure we have at least 13 sources (5 original + 8 new)."""
-        assert len(_RSS_SEEDS) >= 13, (
-            f"Expected ≥13 seeds, got {len(_RSS_SEEDS)}"
+    def test_seed_count_at_least_15(self):
+        """Regression guard: ensure we have at least 15 sources (MVP+ target)."""
+        assert len(_RSS_SEEDS) >= 15, (
+            f"Expected ≥15 seeds, got {len(_RSS_SEEDS)}"
         )
 
     def test_original_sources_present(self):
@@ -62,10 +71,11 @@ class TestSeedIntegrity:
             assert expected in names, f"Original source '{expected}' missing from seeds"
 
     def test_new_sources_present(self):
-        """New sources added in MVP-6 must be present."""
+        """New sources added in MVP-6 and MVP+ must be present."""
         names = {name for name, _ in _RSS_SEEDS}
-        for expected in ("BFM", "RIA", "Izvestia", "Gazeta", "Lenta", "RG", "Investing", "MOEX"):
-            assert expected in names, f"MVP-6 source '{expected}' missing from seeds"
+        for expected in ("BFM", "RIA", "Izvestia", "Gazeta", "Lenta", "RG", "Investing", "MOEX",
+                         "Smartlab", "Government"):
+            assert expected in names, f"Source '{expected}' missing from seeds"
 
 
 # ── fixture parsing ────────────────────────────────────────────────────────────

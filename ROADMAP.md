@@ -15,6 +15,8 @@
 - **Исторические корреляции:** "санкции на нефть → в прошлом акции нефтяников -3.2% в течение дня" — статистически подкреплённый market impact
 - **Admin API:** CRUD для rss_sources без правки кода и перезапуска
 - **Мониторинг / алертинг:** heartbeat в отдельный канал, внешний uptime-monitor при деградации источников
+- **Дайджест дня:** ежедневный AI-summary топ-событий за торговую сессию → отдельный пост в канале в 18:30 и 22:00; агрегация по event_clusters за последние 24 ч, ранжирование по score + source_count
+- **Telegram-каналы как источник:** интеграция TelegramParser (Telethon, уже написан в parsers/telegram_parser.py) в основной pipeline → читать @markettwits, @russianmacro, @cbrstocks и др. напрямую; нужны TELEGRAM_API_ID / TELEGRAM_API_HASH / TELEGRAM_SESSION_STRING в .env
 
 ## Долгий горизонт (v3+)
 

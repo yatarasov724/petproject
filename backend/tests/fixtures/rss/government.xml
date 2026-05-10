@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Правительство России — Новости</title>
+    <link>http://government.ru</link>
+    <item>
+      <title>Правительство утвердило параметры бюджета на 2027 год</title>
+      <link>http://government.ru/news/58600/</link>
+      <pubDate>Fri, 08 May 2026 14:00:00 +0300</pubDate>
+      <description>На заседании Правительства утверждены основные параметры федерального бюджета.</description>
+    </item>
+    <item>
+      <title>Мишустин: инфляция замедляется, ключевая ставка будет снижена</title>
+      <link>http://government.ru/news/58580/</link>
+      <pubDate>Thu, 07 May 2026 11:30:00 +0300</pubDate>
+      <description>Председатель Правительства заявил о признаках замедления инфляции.</description>
+    </item>
+  </channel>
+</rss>

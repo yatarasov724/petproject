@@ -41,6 +41,29 @@ _MAX_RETRY_AFTER_S = 30   # cap Retry-After sleep
 
 # ── public API ────────────────────────────────────────────────────────────────
 
+async def send_text(text: str) -> Optional[int]:
+    """
+    Send a plain MarkdownV2 message to the main channel without cluster context.
+    Used for digest posts and other standalone messages.
+
+    Returns:
+      positive int — Telegram message_id on success
+      0            — DRY_RUN
+      None         — send failed
+    """
+    if settings.dry_run:
+        logger.info("[DRY RUN] send_text:\n%s", text)
+        return 0
+
+    msg_id, error_text = await _send_with_retry(text)
+    if msg_id is None:
+        metrics.inc(metrics.TG_SENT_FAIL)
+        logger.error("send_text failed: %s", error_text)
+    else:
+        metrics.inc(metrics.TG_SENT_OK)
+    return msg_id
+
+
 async def send(
     db: sqlite3.Connection,
     cluster: sqlite3.Row,

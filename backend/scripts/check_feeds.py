@@ -26,27 +26,32 @@ _TIMEOUT  = aiohttp.ClientTimeout(total=15, connect=5)
 _UA       = "MOEXNewsBot/check_feeds (+check)"
 
 _CANDIDATES = [
-    # ── already in seeds ─────────────────────────────────────────────────────
+    # ── active seeds ─────────────────────────────────────────────────────────
     ("TASS",          "https://tass.ru/rss/v2.xml"),
     ("Interfax",      "https://www.interfax.ru/rss"),
+    ("Prime",         "https://1prime.ru/export/rss2/index.xml"),
+    ("RIA",           "https://ria.ru/export/rss2/index.xml"),
     ("Vedomosti",     "https://www.vedomosti.ru/rss/news"),
     ("Kommersant",    "https://www.kommersant.ru/rss/news.xml"),
-    ("1prime",        "https://1prime.ru/export/rss2/index.xml"),
+    ("BFM",           "https://www.bfm.ru/news.rss"),
+    ("Izvestia",      "https://iz.ru/xml/rss/finances.xml"),
+    ("Gazeta",        "https://www.gazeta.ru/export/rss/business.xml"),
+    ("RG",            "https://rg.ru/xml/index.xml"),
+    ("Lenta",         "https://lenta.ru/rss/articles/economics"),
+    ("Investing",     "https://ru.investing.com/rss/news.rss"),
+    ("MOEX",          "https://www.moex.com/export/news.aspx"),
+    ("Smartlab",      "https://smart-lab.ru/news/rss"),
+    ("Government",    "http://government.ru/news/rss/"),
 
-    # ── candidates to add ────────────────────────────────────────────────────
-    ("RBK",           "https://rbc.ru/rss/news"),
-    ("RBK-finance",   "https://rbc.ru/rss/finances"),
-    ("RIA-economy",   "https://ria.ru/export/rss2/economy/index.xml"),
+    # ── dead as of 2026-05 (kept for re-checking) ─────────────────────────────
+    ("RBC",           "https://rbc.ru/rss/news"),
     ("Forbes-RU",     "https://www.forbes.ru/rss"),
-    ("Banki-ru",      "https://www.banki.ru/xml/news.rss"),
-    ("CBR",           "https://www.cbr.ru/rss/"),
     ("Finam",         "https://www.finam.ru/analysis/newsitem/rsspoint/"),
-    ("Investing-RU",  "https://ru.investing.com/rss/news.rss"),
+    ("CBR",           "https://www.cbr.ru/rss/"),
+    ("Banki-ru",      "https://www.banki.ru/xml/news.rss"),
     ("Expert",        "https://expert.ru/rss/"),
     ("Fontanka-eco",  "https://www.fontanka.ru/export/rss/economics.xml"),
-    ("RG-economy",    "https://rg.ru/xml/index.xml"),
-    ("BFM",           "https://www.bfm.ru/news.rss"),
-    ("Moex",          "https://www.moex.com/export/news.aspx?cat=1"),
+    ("RIA-eco",       "https://ria.ru/export/rss2/economy/index.xml"),
 ]
 
 

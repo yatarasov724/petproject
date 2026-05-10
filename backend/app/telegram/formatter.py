@@ -31,11 +31,20 @@ Design decisions:
 """
 
 import sqlite3
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Optional, TYPE_CHECKING
 
 from app.ai.analyzer import AIAnalysis
 from app.pipeline.scorer import EventType, ScoreResult
 from app.pipeline.publish_decision import Decision
+
+if TYPE_CHECKING:
+    from app.ai.digest import DigestAnalysis
+
+_MONTHS_RU = (
+    "", "января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря",
+)
 
 # ── badge labels ──────────────────────────────────────────────────────────────
 
@@ -145,6 +154,54 @@ def format_message(
             parts += ["", f"Влияет на: {_esc(affects)}"]
 
     return "\n".join(parts)
+
+
+def format_digest(
+    clusters: list[sqlite3.Row],
+    ai_digest: Optional["DigestAnalysis"],
+    label: str,
+) -> str:
+    """
+    Format the daily digest as a MarkdownV2 Telegram message.
+
+    label — display time, e.g. "18:30" or "22:00" (MSK).
+
+    With AI:
+      📋 *ДАЙДЖЕСТ — 10 МАЯ, 18:30*
+
+      🔴 Газпром снизил дивиденды — давление на акции
+      🟢 ЦБ сохранил ставку — поддержка для рынка
+
+      _Итоги сессии: преобладает давление на рынок._
+
+    Without AI:
+      📋 *ДАЙДЖЕСТ — 10 МАЯ, 18:30*
+
+      • Газпром снизил дивиденды
+      • ЦБ сохранил ставку
+    """
+    now_msk  = datetime.now(timezone.utc)
+    day      = now_msk.day
+    month    = _MONTHS_RU[now_msk.month]
+    date_str = f"{day} {month}"
+
+    header = f"📋 *ДАЙДЖЕСТ — {_esc(date_str)}, {_esc(label)}*"
+    lines  = [header, ""]
+
+    for i, cluster in enumerate(clusters):
+        title = cluster["canonical_title"]
+        if ai_digest and i < len(ai_digest.items):
+            item   = ai_digest.items[i]
+            emoji  = item["emoji"]
+            effect = item["effect"]
+            lines.append(f"{emoji} {_esc(title)} — {_esc(effect)}")
+        else:
+            lines.append(f"• {_esc(title)}")
+
+    if ai_digest and ai_digest.summary:
+        lines += ["", f"_{_esc(ai_digest.summary)}_"]
+
+    return "\n".join(lines)
 
 
 def _format_tickers(tickers: Optional[str]) -> str:
