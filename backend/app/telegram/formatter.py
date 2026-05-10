@@ -111,7 +111,11 @@ def format_message(
 
       Влияет на: акции · рубль · ОФЗ
     """
-    ticker_line = _format_tickers(cluster["tickers"])
+    # AI-extracted tickers take priority over keyword-matched cluster tickers
+    if ai_analysis and ai_analysis.tickers:
+        ticker_line = " · ".join(f"\\${t}" for t in ai_analysis.tickers)
+    else:
+        ticker_line = _format_tickers(cluster["tickers"])
 
     if ai_analysis:
         prefix     = "↻ " if decision == Decision.UPDATE else ""

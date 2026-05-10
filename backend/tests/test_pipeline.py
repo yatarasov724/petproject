@@ -390,7 +390,7 @@ class TestAIGate:
 
         no_impact = AIAnalysis(
             title="", impact="neutral", emoji="⚪️",
-            summary="", market_effect="", affects="",
+            summary="", market_effect="", affects="", tickers=[],
         )
 
         with (
@@ -424,6 +424,7 @@ class TestAIGate:
         analysis = AIAnalysis(
             title="ЦБ повысил ставку", impact="negative", emoji="🔴",
             summary="Влияет на банки", market_effect="Давление на акции", affects="акции · ОФЗ",
+            tickers=[],
         )
 
         with (

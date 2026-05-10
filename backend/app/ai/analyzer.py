@@ -79,7 +79,25 @@ forex → валюты
 
 ---
 
-6. ПРАВИЛА
+6. ТИКЕРЫ MOEX (tickers)
+Если новость прямо касается конкретной компании — укажи её тикер(ы) из списка:
+SBER (Сбербанк, Сбер, Греф), GAZP (Газпром, Миллер), LKOH (Лукойл, Алекперов),
+YNDX (Яндекс, Yandex), ROSN (Роснефть, Сечин), GMKN (Норникель, Потанин),
+NVTK (Новатэк, Михельсон), TATN (Татнефть), VTBR (ВТБ), AFLT (Аэрофлот),
+MGNT (Магнит), PHOR (ФосАгро), ALRS (Алроса), PLZL (Полюс, Полюс Золото),
+OZON (Ozon, Озон), PIKK (ПИК), CHMF (Северсталь), NLMK (НЛМК),
+MAGN (ММК, Магнитогорский), SNGS (Сургутнефтегаз), FEES (ФСК ЕЭС, Россети),
+RTKM (Ростелеком), MTLR (Мечел), MTSS (МТС)
+
+Правила:
+- Только тикеры из списка выше
+- Только если компания ПРЯМО упомянута в новости (не косвенно)
+- Макроэкономика, ЦБ, санкции без конкретной компании → пустой массив []
+- Максимум 3 тикера
+
+---
+
+7. ПРАВИЛА
 - никакого английского
 - без категории
 - коротко и по делу
@@ -94,7 +112,8 @@ forex → валюты
   "emoji": "🟢 | 🔴",
   "summary": "1 предложение — что произошло (не повторяет заголовок)",
   "market_effect": "прямой эффект на рынок (1 предложение)",
-  "affects": "акции · рубль · ОФЗ · сырьё"
+  "affects": "акции · рубль · ОФЗ · сырьё",
+  "tickers": ["SBER", "GAZP"]
 }\
 """
 
@@ -102,16 +121,22 @@ _USER_TEMPLATE = "Заголовок: {title}\nТекст: {text}"
 
 _VALID_IMPACTS = frozenset({"positive", "negative"})
 _VALID_EMOJIS  = frozenset({"🟢", "🔴"})
+_VALID_TICKERS = frozenset({
+    "SBER", "GAZP", "LKOH", "YNDX", "ROSN", "GMKN", "NVTK", "TATN",
+    "VTBR", "AFLT", "MGNT", "PHOR", "ALRS", "PLZL", "OZON", "PIKK",
+    "CHMF", "NLMK", "MAGN", "SNGS", "FEES", "RTKM", "MTLR", "MTSS",
+})
 
 
 @dataclass(frozen=True)
 class AIAnalysis:
     title:         str
-    impact:        str   # positive | negative
-    emoji:         str   # 🟢 | 🔴
+    impact:        str         # positive | negative
+    emoji:         str         # 🟢 | 🔴
     summary:       str
     market_effect: str
-    affects:       str   # "акции · рубль · ОФЗ · сырьё"
+    affects:       str         # "акции · рубль · ОФЗ · сырьё"
+    tickers:       list[str]   # validated MOEX tickers, e.g. ["SBER", "GAZP"]
 
 
 async def analyze(title: str, text: str = "") -> Optional[AIAnalysis]:
@@ -132,7 +157,7 @@ async def analyze(title: str, text: str = "") -> Optional[AIAnalysis]:
         ],
         "response_format": {"type": "json_object"},
         "temperature": 0.1,
-        "max_tokens": 300,
+        "max_tokens": 400,
     }
     headers = {
         "Authorization": f"Bearer {settings.openrouter_api_key}",
@@ -179,6 +204,12 @@ def _validate(data: dict) -> Optional[AIAnalysis]:
         if emoji not in _VALID_EMOJIS:
             emoji = "🔴"
 
+        raw_tickers = data.get("tickers", [])
+        if isinstance(raw_tickers, list):
+            tickers = [t for t in raw_tickers if isinstance(t, str) and t.upper() in _VALID_TICKERS]
+        else:
+            tickers = []
+
         return AIAnalysis(
             title=ai_title,
             impact=impact,
@@ -186,6 +217,7 @@ def _validate(data: dict) -> Optional[AIAnalysis]:
             summary=summary,
             market_effect=market_effect,
             affects=affects,
+            tickers=tickers,
         )
     except Exception:
         return None
