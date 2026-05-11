@@ -88,9 +88,10 @@ async def test_notify_sends_dm_to_subscribers(db):
     queries.set_user_tickers(db, 111, ["SBER"])
     queries.set_user_tickers(db, 222, ["GAZP"])
 
+    mock_dm = AsyncMock(return_value=42)
     with (
         patch("app.bot.portfolio.get_db", return_value=db),
-        patch("app.bot.portfolio.send_dm", new_callable=AsyncMock) as mock_dm,
+        patch("app.bot.portfolio.send_dm", mock_dm),
     ):
         from app.bot.portfolio import notify
         await notify("SBER,GAZP", "Банки под давлением", cluster_id=1)
@@ -102,9 +103,10 @@ async def test_notify_sends_dm_to_subscribers(db):
 
 @pytest.mark.asyncio
 async def test_notify_skips_no_subscribers(db):
+    mock_dm = AsyncMock(return_value=None)
     with (
         patch("app.bot.portfolio.get_db", return_value=db),
-        patch("app.bot.portfolio.send_dm", new_callable=AsyncMock) as mock_dm,
+        patch("app.bot.portfolio.send_dm", mock_dm),
     ):
         from app.bot.portfolio import notify
         await notify("GAZP", "Газпром снижает дивиденды", cluster_id=2)
@@ -114,7 +116,8 @@ async def test_notify_skips_no_subscribers(db):
 
 @pytest.mark.asyncio
 async def test_notify_skips_empty_tickers():
-    with patch("app.bot.portfolio.send_dm", new_callable=AsyncMock) as mock_dm:
+    mock_dm = AsyncMock(return_value=None)
+    with patch("app.bot.portfolio.send_dm", mock_dm):
         from app.bot.portfolio import notify
         await notify("", "Заголовок без тикеров", cluster_id=3)
 
@@ -127,9 +130,9 @@ async def test_notify_message_contains_ticker_and_title(db):
 
     sent_texts: list[str] = []
 
-    async def capture_dm(user_id, text):
+    async def capture_dm(user_id, text, **kwargs):
         sent_texts.append(text)
-        return True
+        return 42
 
     with (
         patch("app.bot.portfolio.get_db", return_value=db),
@@ -155,9 +158,25 @@ def _make_update(user_id: int, text: str, update_id: int = 1) -> dict:
     }
 
 
+def _make_callback(user_id: int, data: str, message_id: int = 1, update_id: int = 1) -> dict:
+    return {
+        "update_id": update_id,
+        "callback_query": {
+            "id": "cbq_test",
+            "from": {"id": user_id},
+            "data": data,
+            "message": {
+                "message_id": message_id,
+                "chat": {"id": user_id},
+            },
+        },
+    }
+
+
 @pytest.mark.asyncio
 async def test_command_start_sends_welcome(db):
-    with patch("app.bot.commands.send_dm", new_callable=AsyncMock) as mock_dm:
+    mock_dm = AsyncMock(return_value=1)
+    with patch("app.bot.commands.send_dm", mock_dm):
         from app.bot.commands import handle_update
         await handle_update(db, _make_update(111, "/start"))
 
@@ -166,81 +185,93 @@ async def test_command_start_sends_welcome(db):
 
 
 @pytest.mark.asyncio
-async def test_command_portfolio_subscribe(db):
-    with patch("app.bot.commands.send_dm", new_callable=AsyncMock):
+async def test_command_portfolio_shows_keyboard(db):
+    """'/portfolio' opens the ticker keyboard (no text args)."""
+    mock_dm = AsyncMock(return_value=1)
+    with patch("app.bot.commands.send_dm", mock_dm):
         from app.bot.commands import handle_update
-        await handle_update(db, _make_update(111, "/portfolio GAZP SBER"))
+        await handle_update(db, _make_update(111, "/portfolio"))
+
+    mock_dm.assert_called_once()
+    _, kwargs = mock_dm.call_args
+    assert "reply_markup" in kwargs
+    assert "inline_keyboard" in kwargs["reply_markup"]
+
+
+@pytest.mark.asyncio
+async def test_callback_toggle_adds_ticker(db):
+    mock_edit = AsyncMock(return_value=True)
+    with (
+        patch("app.bot.commands.answer_callback_query", AsyncMock()),
+        patch("app.bot.commands.edit_dm", mock_edit),
+    ):
+        from app.bot.commands import handle_update
+        await handle_update(db, _make_callback(111, "t:GAZP"))
 
     assert "GAZP" in queries.get_user_tickers(db, 111)
-    assert "SBER" in queries.get_user_tickers(db, 111)
 
 
 @pytest.mark.asyncio
-async def test_command_portfolio_show_empty(db):
-    sent: list[str] = []
+async def test_callback_toggle_removes_ticker(db):
+    queries.set_user_tickers(db, 111, ["GAZP"])
 
-    async def capture(user_id, text):
-        sent.append(text)
-        return True
-
-    with patch("app.bot.commands.send_dm", side_effect=capture):
+    with (
+        patch("app.bot.commands.answer_callback_query", AsyncMock()),
+        patch("app.bot.commands.edit_dm", AsyncMock(return_value=True)),
+    ):
         from app.bot.commands import handle_update
-        await handle_update(db, _make_update(111, "/portfolio"))
+        await handle_update(db, _make_callback(111, "t:GAZP"))
 
-    assert len(sent) == 1
-    assert "нет активных" in sent[0].lower() or "подписок" in sent[0]
+    assert "GAZP" not in queries.get_user_tickers(db, 111)
 
 
 @pytest.mark.asyncio
-async def test_command_portfolio_show_existing(db):
-    queries.set_user_tickers(db, 111, ["LKOH"])
+async def test_callback_toggle_keyboard_reflects_state(db):
+    """After toggle, the keyboard passed to edit_dm must show ✅ on the added ticker."""
+    edits: list[dict] = []
 
-    sent: list[str] = []
-
-    async def capture(user_id, text):
-        sent.append(text)
+    async def capture_edit(chat_id, msg_id, text, reply_markup=None):
+        edits.append(reply_markup or {})
         return True
 
-    with patch("app.bot.commands.send_dm", side_effect=capture):
+    with (
+        patch("app.bot.commands.answer_callback_query", AsyncMock()),
+        patch("app.bot.commands.edit_dm", side_effect=capture_edit),
+    ):
         from app.bot.commands import handle_update
-        await handle_update(db, _make_update(111, "/portfolio"))
+        await handle_update(db, _make_callback(111, "t:SBER"))
 
-    assert "LKOH" in sent[0]
+    keyboard = edits[0]
+    all_buttons = [btn for row in keyboard["inline_keyboard"] for btn in row]
+    sber_btn = next(b for b in all_buttons if "SBER" in b["text"])
+    assert "✅" in sber_btn["text"]
+
+
+@pytest.mark.asyncio
+async def test_callback_done_clears_keyboard(db):
+    queries.set_user_tickers(db, 111, ["GAZP"])
+    edits: list[dict] = []
+
+    async def capture_edit(chat_id, msg_id, text, reply_markup=None):
+        edits.append(reply_markup or {})
+        return True
+
+    with (
+        patch("app.bot.commands.answer_callback_query", AsyncMock()),
+        patch("app.bot.commands.edit_dm", side_effect=capture_edit),
+    ):
+        from app.bot.commands import handle_update
+        await handle_update(db, _make_callback(111, "done"))
+
+    assert edits[0] == {"inline_keyboard": []}
 
 
 @pytest.mark.asyncio
 async def test_command_unsubscribe(db):
     queries.set_user_tickers(db, 111, ["GAZP"])
 
-    with patch("app.bot.commands.send_dm", new_callable=AsyncMock):
+    with patch("app.bot.commands.send_dm", AsyncMock(return_value=1)):
         from app.bot.commands import handle_update
         await handle_update(db, _make_update(111, "/unsubscribe"))
 
-    assert queries.get_user_tickers(db, 111) == []
-
-
-@pytest.mark.asyncio
-async def test_command_portfolio_strips_dollar_prefix(db):
-    with patch("app.bot.commands.send_dm", new_callable=AsyncMock):
-        from app.bot.commands import handle_update
-        await handle_update(db, _make_update(111, "/portfolio $GAZP $SBER"))
-
-    tickers = queries.get_user_tickers(db, 111)
-    assert "GAZP" in tickers
-    assert "SBER" in tickers
-
-
-@pytest.mark.asyncio
-async def test_command_portfolio_unknown_ticker(db):
-    sent: list[str] = []
-
-    async def capture(user_id, text):
-        sent.append(text)
-        return True
-
-    with patch("app.bot.commands.send_dm", side_effect=capture):
-        from app.bot.commands import handle_update
-        await handle_update(db, _make_update(111, "/portfolio XYZABC"))
-
-    assert "не найден" in sent[0].lower() or "не распознан" in sent[0].lower()
     assert queries.get_user_tickers(db, 111) == []

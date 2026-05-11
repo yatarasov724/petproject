@@ -39,7 +39,8 @@ async def notify(tickers_raw: str, canonical_title: str, cluster_id: int) -> Non
     text = f"🔔 *Событие по вашему портфелю*\n\n{tickers_line}\n\n{title}"
 
     for user_id in user_ids:
-        ok = await send_dm(user_id, text)
+        msg_id = await send_dm(user_id, text)
+        ok = msg_id is not None
         logger.info(
             "portfolio notify %s: user_id=%d cluster_id=%d tickers=%s",
             "ok" if ok else "failed",

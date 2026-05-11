@@ -1,19 +1,22 @@
 """
 Application settings loaded from environment variables / .env file.
 
-Required variables (app won't start without them):
+Required:
   TELEGRAM_BOT_TOKEN    — bot token from @BotFather
   TELEGRAM_CHANNEL_ID   — channel/chat ID, e.g. -1001234567890
 
-Optional variables (have safe defaults):
+Optional:
   DATABASE_URL          — SQLite path (default: sqlite:///./moex_assistant.db)
-  FRONTEND_URL          — CORS origin (default: http://localhost:3000)
   LOG_FORMAT            — "text" or "json" (default: text)
   LOG_LEVEL             — DEBUG/INFO/WARNING/ERROR (default: INFO)
-  DRY_RUN               — if true, Telegram sends are skipped and logged only
+  DRY_RUN               — pipeline runs fully but Telegram sends are skipped
+  TELEGRAM_OPS_CHAT_ID  — ops/heartbeat alerts destination
 
-Ignored / legacy (kept so existing .env doesn't break):
-  GROQ_API_KEY, TELEGRAM_API_ID/HASH/SESSION_STRING — not used in MVP
+Telegram channel polling (Telethon):
+  TELEGRAM_API_ID       — from my.telegram.org
+  TELEGRAM_API_HASH     — from my.telegram.org
+  TELEGRAM_SESSION_STRING — used once to bootstrap telegram_session.session file;
+                            after the file exists this variable is no longer read
 """
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -45,11 +48,14 @@ class Settings(BaseSettings):
     # ── AI analysis ───────────────────────────────────────────────────────────
     openrouter_api_key: str = ""
 
-    # ── legacy / unused ───────────────────────────────────────────────────────
-    groq_api_key:            str = ""
+    # ── Telegram channel polling (Telethon) ───────────────────────────────────
     telegram_api_id:         int = 0
     telegram_api_hash:       str = ""
+    # Bootstrap-only: used once to seed telegram_session.session, then ignored.
     telegram_session_string: str = ""
+
+    # ── legacy / unused ───────────────────────────────────────────────────────
+    groq_api_key: str = ""
 
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),

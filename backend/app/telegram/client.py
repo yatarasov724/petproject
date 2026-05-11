@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 _BASE_URL          = "https://api.telegram.org/bot{token}/sendMessage"
 _EDIT_URL          = "https://api.telegram.org/bot{token}/editMessageText"
 _UPDATES_URL       = "https://api.telegram.org/bot{token}/getUpdates"
+_ANSWER_CBQ_URL    = "https://api.telegram.org/bot{token}/answerCallbackQuery"
 _TIMEOUT           = aiohttp.ClientTimeout(total=10)
 _MAX_RETRIES       = 3
 _RETRY_BASE_S      = 2    # backoff: 2s → 4s → 8s
@@ -61,7 +62,7 @@ async def get_updates() -> list[dict]:
     params = {
         "offset":          _update_offset,
         "timeout":         0,
-        "allowed_updates": '["message"]',
+        "allowed_updates": '["message","callback_query"]',
     }
     try:
         async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
@@ -80,38 +81,89 @@ async def get_updates() -> list[dict]:
         return []
 
 
-async def send_dm(user_id: int, text: str) -> bool:
+async def send_dm(
+    user_id: int,
+    text: str,
+    reply_markup: Optional[dict] = None,
+) -> Optional[int]:
     """
-    Send a MarkdownV2 message to a specific Telegram user (private DM).
+    Send a MarkdownV2 message to a user (private DM), optionally with an inline keyboard.
     Only works if the user has previously started a conversation with the bot.
-    Returns True on success; False on any error.
+    Returns message_id on success, None on failure.
     """
     if settings.dry_run:
         logger.info("[DRY RUN] send_dm user_id=%d:\n%s", user_id, text)
-        return True
+        return 0
 
     url = _BASE_URL.format(token=settings.telegram_bot_token)
-    payload = {
+    payload: dict = {
         "chat_id":                  user_id,
         "text":                     text,
         "parse_mode":               "MarkdownV2",
         "disable_web_page_preview": True,
     }
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    try:
+        async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+            async with session.post(url, json=payload) as resp:
+                body = await resp.json(content_type=None)
+                if resp.status == 200 and body.get("ok"):
+                    return body["result"]["message_id"]
+                logger.warning(
+                    "send_dm failed user_id=%d: %s",
+                    user_id,
+                    body.get("description", ""),
+                )
+                return None
+    except Exception as exc:
+        logger.warning("send_dm error user_id=%d: %s", user_id, exc)
+        return None
+
+
+async def edit_dm(
+    chat_id: int,
+    message_id: int,
+    text: str,
+    reply_markup: Optional[dict] = None,
+) -> bool:
+    """Edit an existing DM message text and/or inline keyboard."""
+    if settings.dry_run:
+        return True
+
+    url = _EDIT_URL.format(token=settings.telegram_bot_token)
+    payload: dict = {
+        "chat_id":                  chat_id,
+        "message_id":               message_id,
+        "text":                     text,
+        "parse_mode":               "MarkdownV2",
+        "disable_web_page_preview": True,
+    }
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
     try:
         async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
             async with session.post(url, json=payload) as resp:
                 body = await resp.json(content_type=None)
                 ok = resp.status == 200 and body.get("ok")
-                if not ok:
-                    logger.warning(
-                        "send_dm failed user_id=%d: %s",
-                        user_id,
-                        body.get("description", ""),
-                    )
+                if not ok and "message is not modified" not in body.get("description", ""):
+                    logger.warning("edit_dm failed chat_id=%d: %s", chat_id, body.get("description", ""))
                 return bool(ok)
     except Exception as exc:
-        logger.warning("send_dm error user_id=%d: %s", user_id, exc)
+        logger.warning("edit_dm error chat_id=%d: %s", chat_id, exc)
         return False
+
+
+async def answer_callback_query(callback_query_id: str, text: str = "") -> None:
+    """Acknowledge a button press to dismiss the loading spinner."""
+    if settings.dry_run:
+        return
+    url = _ANSWER_CBQ_URL.format(token=settings.telegram_bot_token)
+    try:
+        async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+            await session.post(url, json={"callback_query_id": callback_query_id, "text": text})
+    except Exception as exc:
+        logger.warning("answer_callback_query error: %s", exc)
 
 
 async def edit_message(message_id: int, text: str) -> bool:
