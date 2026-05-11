@@ -90,7 +90,12 @@ async def generate_digest(headlines: list[str]) -> Optional[DigestAnalysis]:
                     return None
                 body = await resp.json(content_type=None)
 
-        raw  = body["choices"][0]["message"]["content"] or ""
+        raw = body["choices"][0]["message"]["content"] or ""
+        # Strip markdown code fences: some models wrap JSON in ```json ... ```
+        raw = raw.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[-1]          # drop opening fence line
+            raw = raw.rsplit("```", 1)[0].strip()  # drop closing fence
         data = json.loads(raw)
         return _validate(data, expected_count=len(headlines))
 

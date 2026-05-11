@@ -113,6 +113,18 @@ CREATE INDEX IF NOT EXISTS idx_sends_sent_at    ON telegram_sends(sent_at);
 CREATE INDEX IF NOT EXISTS idx_sends_cluster_id ON telegram_sends(cluster_id);
 
 
+-- ─── digest_sends ──────────────────────────────────────────────────────────────
+-- One row per digest label+date. UNIQUE prevents double-send from concurrent
+-- service instances (e.g. Docker + local uvicorn running simultaneously).
+CREATE TABLE IF NOT EXISTS digest_sends (
+    id        SERIAL PRIMARY KEY,
+    label     TEXT   NOT NULL,
+    sent_date TEXT   NOT NULL,
+    sent_at   TEXT   NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+    UNIQUE (label, sent_date)
+);
+
+
 -- ─── portfolio_subscriptions ───────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS portfolio_subscriptions (
     id         SERIAL  PRIMARY KEY,
@@ -124,6 +136,39 @@ CREATE TABLE IF NOT EXISTS portfolio_subscriptions (
 
 CREATE INDEX IF NOT EXISTS idx_portfolio_user_id ON portfolio_subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_portfolio_ticker  ON portfolio_subscriptions(ticker);
+
+
+-- ─── users ─────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS users (
+    id          SERIAL  PRIMARY KEY,
+    telegram_id BIGINT  NOT NULL UNIQUE,
+    username    TEXT,
+    first_name  TEXT    NOT NULL DEFAULT '',
+    plan        TEXT    NOT NULL DEFAULT 'free'
+        CHECK (plan IN ('free', 'pro')),
+    created_at  TEXT    NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id);
+
+
+-- ─── subscriptions ─────────────────────────────────────────────────────────────
+-- Tracks paid subscription billing cycles.
+-- users.plan is the authoritative plan gate — this table manages expiry and payment history.
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id          SERIAL  PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    plan        TEXT    NOT NULL CHECK (plan IN ('monthly', 'annual')),
+    status      TEXT    NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'grace', 'expired')),
+    expires_at  TEXT    NOT NULL,
+    payment_id  TEXT    UNIQUE,
+    created_at  TEXT    NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+);
+
+CREATE INDEX IF NOT EXISTS idx_subs_user_id    ON subscriptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_subs_status     ON subscriptions(status);
+CREATE INDEX IF NOT EXISTS idx_subs_expires_at ON subscriptions(expires_at);
 
 
 -- ─── price_snapshots ───────────────────────────────────────────────────────────

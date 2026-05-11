@@ -204,6 +204,26 @@ async def digest_job(within_hours: int, label: str) -> None:
     """
     db = get_db()
     try:
+        # Guard: prevent double-send when multiple service instances run concurrently.
+        # INSERT fails silently if another instance already claimed this slot.
+        sent_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        cur = db.execute(
+            """
+            INSERT INTO digest_sends (label, sent_date)
+            VALUES (%s, %s)
+            ON CONFLICT (label, sent_date) DO NOTHING
+            RETURNING id
+            """,
+            (label, sent_date),
+        )
+        db.commit()
+        if cur.fetchone() is None:
+            logger.info(
+                "digest_job: already sent by another instance — skipping",
+                extra={"event": "digest_dedup", "label": label},
+            )
+            return
+
         candidates = queries.get_top_sent_clusters(
             db, within_hours=within_hours, limit=_DIGEST_PRE_FETCH
         )
