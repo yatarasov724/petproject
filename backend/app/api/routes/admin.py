@@ -13,14 +13,15 @@ Endpoints
   POST   /admin/sources/{id}/reset — clear backoff state
 """
 
-import sqlite3
+import psycopg2
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, HttpUrl
 
 from app.core.config import settings
-from app.db.database import get_db
+from app.db.database import get_db, DBConnection
 from app.db import queries
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,7 @@ class SourceResponse(BaseModel):
     last_fetched_at: str | None
 
 
-def _row_to_response(row: sqlite3.Row) -> SourceResponse:
+def _row_to_response(row: Any) -> SourceResponse:
     return SourceResponse(
         id=row["id"],
         name=row["name"],
@@ -84,7 +85,7 @@ def _get_db():
 @router.get("/sources", response_model=list[SourceResponse])
 def list_sources(
     _: None = Depends(_require_admin),
-    db: sqlite3.Connection = Depends(_get_db),
+    db: DBConnection = Depends(_get_db),
 ):
     return [_row_to_response(row) for row in queries.get_all_sources(db)]
 
@@ -93,11 +94,12 @@ def list_sources(
 def create_source(
     body: SourceCreate,
     _: None = Depends(_require_admin),
-    db: sqlite3.Connection = Depends(_get_db),
+    db: DBConnection = Depends(_get_db),
 ):
     try:
         new_id = queries.add_source(db, name=body.name, url=str(body.url))
-    except sqlite3.IntegrityError:
+    except psycopg2.IntegrityError:
+        db.rollback()
         raise HTTPException(status_code=409, detail="Source name or URL already exists")
 
     row = queries.get_all_sources(db)
@@ -114,7 +116,7 @@ def update_source(
     source_id: int,
     body: SourceUpdate,
     _: None = Depends(_require_admin),
-    db: sqlite3.Connection = Depends(_get_db),
+    db: DBConnection = Depends(_get_db),
 ):
     if body.url is None and body.enabled is None:
         raise HTTPException(status_code=422, detail="Provide at least one of: url, enabled")
@@ -125,7 +127,8 @@ def update_source(
             url=str(body.url) if body.url is not None else None,
             enabled=body.enabled,
         )
-    except sqlite3.IntegrityError:
+    except psycopg2.IntegrityError:
+        db.rollback()
         raise HTTPException(status_code=409, detail="URL already used by another source")
 
     if not updated:
@@ -144,7 +147,7 @@ def update_source(
 def disable_source(
     source_id: int,
     _: None = Depends(_require_admin),
-    db: sqlite3.Connection = Depends(_get_db),
+    db: DBConnection = Depends(_get_db),
 ):
     if not queries.disable_source(db, source_id):
         raise HTTPException(status_code=404, detail="Source not found")
@@ -155,7 +158,7 @@ def disable_source(
 def reset_source(
     source_id: int,
     _: None = Depends(_require_admin),
-    db: sqlite3.Connection = Depends(_get_db),
+    db: DBConnection = Depends(_get_db),
 ):
     if not queries.reset_source_backoff(db, source_id):
         raise HTTPException(status_code=404, detail="Source not found")

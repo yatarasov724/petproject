@@ -265,12 +265,33 @@ async def bot_commands_job() -> None:
 
 def backup_job() -> None:
     """
-    Hot-backup the SQLite DB every 6 h. Keeps the last 10 backups.
-    Uses sqlite3.Connection.backup() — safe while the service is live.
+    Dump PostgreSQL DB every 6 h via pg_dump. Keeps the last 10 backups.
+    Requires pg_dump to be available in PATH (standard with any PostgreSQL install).
     """
+    import subprocess
+    from datetime import datetime
+    from pathlib import Path
+    from app.core.config import settings
+
+    backup_dir = Path("backups")
+    backup_dir.mkdir(exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest = backup_dir / f"moex_assistant_{timestamp}.sql"
+
     try:
-        from scripts.backup_db import backup, _DEFAULT_DB, _BACKUP_DIR
-        dest = backup(db_path=_DEFAULT_DB, backup_dir=_BACKUP_DIR, max_keep=10)
+        result = subprocess.run(
+            ["pg_dump", settings.database_url, "-f", str(dest)],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            logger.error("backup_job: pg_dump failed: %s", result.stderr)
+            return
+
+        # rotate — keep last 10
+        backups = sorted(backup_dir.glob("moex_assistant_*.sql"))
+        for old in backups[:-10]:
+            old.unlink()
+
         logger.info(
             "db backup complete",
             extra={"event": "db_backup_complete", "file": dest.name},

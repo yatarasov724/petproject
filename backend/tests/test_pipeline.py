@@ -15,7 +15,6 @@ Covers:
 - Cluster time window: article arriving after window creates new cluster
 """
 
-import sqlite3
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
@@ -87,7 +86,7 @@ class TestNoiseFilter:
         assert outcome == Outcome.NOISE
 
         # No cluster should have been created
-        count = db.execute("SELECT COUNT(*) FROM event_clusters").fetchone()[0]
+        count = db.execute("SELECT COUNT(*) FROM event_clusters").fetchone()["count"]
         assert count == 0
 
     def test_low_score_article_below_min(self, db):
@@ -115,9 +114,9 @@ class TestExactDedup:
         article = make_article(title="ЦБ повысил ключевую ставку до 21 процента")
         _run_pipeline_steps(db, article)
 
-        count_before = db.execute("SELECT article_count FROM event_clusters LIMIT 1").fetchone()[0]
+        count_before = db.execute("SELECT article_count FROM event_clusters LIMIT 1").fetchone()["article_count"]
         _run_pipeline_steps(db, article)
-        count_after = db.execute("SELECT article_count FROM event_clusters LIMIT 1").fetchone()[0]
+        count_after = db.execute("SELECT article_count FROM event_clusters LIMIT 1").fetchone()["article_count"]
 
         assert count_before == count_after
 
@@ -168,7 +167,7 @@ class TestCrossSourceUpdate:
         # Simulate: cluster was previously published, cooldown expired, 3 sources confirmed
         queries.mark_cluster_sent(db, cluster_id, "NEW_EVENT", score=30, cooldown_hours=0)
         db.execute(
-            "UPDATE event_clusters SET source_count = ?, cooldown_until = NULL WHERE id = ?",
+            "UPDATE event_clusters SET source_count = %s, cooldown_until = NULL WHERE id = %s",
             (UPDATE_SOURCE_FLOOR, cluster_id),
         )
         db.commit()
@@ -197,7 +196,7 @@ class TestCooldown:
         # Mark cluster sent with active cooldown (2 hours in the future)
         cluster_id = db.execute(
             "SELECT id FROM event_clusters ORDER BY id LIMIT 1"
-        ).fetchone()[0]
+        ).fetchone()["id"]
         queries.mark_cluster_sent(db, cluster_id, "NEW_EVENT", score=30, cooldown_hours=2)
 
         # Second source — but cooldown still active
@@ -207,7 +206,7 @@ class TestCooldown:
         )
         # We need source_count to be >= UPDATE_SOURCE_FLOOR already to test cooldown wins
         db.execute(
-            "UPDATE event_clusters SET source_count = 3 WHERE id = ?", (cluster_id,)
+            "UPDATE event_clusters SET source_count = 3 WHERE id = %s", (cluster_id,)
         )
         db.commit()
 
@@ -291,8 +290,8 @@ class TestAtomicClusterDedup:
 
         assert result.outcome == Outcome.SENT_NEW
 
-        cluster_count = db.execute("SELECT COUNT(*) FROM event_clusters").fetchone()[0]
-        seen_count    = db.execute("SELECT COUNT(*) FROM seen_articles").fetchone()[0]
+        cluster_count = db.execute("SELECT COUNT(*) FROM event_clusters").fetchone()["count"]
+        seen_count    = db.execute("SELECT COUNT(*) FROM seen_articles").fetchone()["count"]
         assert cluster_count == 1
         assert seen_count == 1
 
@@ -319,8 +318,8 @@ class TestAtomicClusterDedup:
 
         assert result.outcome == Outcome.ERROR
 
-        cluster_count = db.execute("SELECT COUNT(*) FROM event_clusters").fetchone()[0]
-        seen_count    = db.execute("SELECT COUNT(*) FROM seen_articles").fetchone()[0]
+        cluster_count = db.execute("SELECT COUNT(*) FROM event_clusters").fetchone()["count"]
+        seen_count    = db.execute("SELECT COUNT(*) FROM seen_articles").fetchone()["count"]
         assert cluster_count == 0, "cluster must be rolled back on dedup failure"
         assert seen_count == 0,    "seen_article must not exist after rollback"
 
@@ -695,7 +694,7 @@ class TestDupGuard:
             INSERT INTO telegram_sends
                 (cluster_id, decision, score, source_count, headline,
                  tg_message_id, ok, sent_at)
-            VALUES (?, 'NEW_EVENT', 50, 1, ?, 42, 1, ?)
+            VALUES (%s, 'NEW_EVENT', 50, 1, %s, 42, 1, %s)
             """,
             (cluster_id, title, old_sent_at),
         )

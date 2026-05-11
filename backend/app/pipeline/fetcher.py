@@ -11,8 +11,8 @@ Design decisions:
 
 import asyncio
 import logging
-import sqlite3
-from typing import Optional
+from app.db.database import DBConnection
+from typing import Any, Optional
 
 import aiohttp
 import feedparser
@@ -27,7 +27,7 @@ _FETCH_TIMEOUT = aiohttp.ClientTimeout(total=15, connect=5)
 _USER_AGENT    = "MOEXNewsBot/1.0 (+https://github.com/yatarasov724/petproject)"
 
 
-async def fetch_all(db: sqlite3.Connection) -> list[RawArticle]:
+async def fetch_all(db: DBConnection) -> list[RawArticle]:
     """
     Entry point for the poll job.
     Fetches all active sources concurrently, returns de-raw-duplicated articles.
@@ -64,8 +64,8 @@ async def fetch_all(db: sqlite3.Connection) -> list[RawArticle]:
 
 async def _fetch_source(
     session: aiohttp.ClientSession,
-    db: sqlite3.Connection,
-    source: sqlite3.Row,
+    db: DBConnection,
+    source: Any,
 ) -> list[RawArticle]:
     """
     Fetch one source. Returns list of RawArticle (may be empty on 304 or error).
@@ -144,7 +144,7 @@ def _parse_feed(
     return articles
 
 
-def _conditional_headers(source: sqlite3.Row) -> dict[str, str]:
+def _conditional_headers(source: Any) -> dict[str, str]:
     headers: dict[str, str] = {}
     if source["etag"]:
         headers["If-None-Match"] = source["etag"]
@@ -153,7 +153,7 @@ def _conditional_headers(source: sqlite3.Row) -> dict[str, str]:
     return headers
 
 
-def _record_error(db: sqlite3.Connection, source_id: int) -> None:
+def _record_error(db: DBConnection, source_id: int) -> None:
     """Record a fetch error and update the corresponding backoff/dead metric."""
     new_status = queries.update_source_error(db, source_id)
     if new_status == "dead":

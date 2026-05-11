@@ -39,7 +39,7 @@ What NOT to do in MVP
 """
 
 import logging
-import sqlite3
+from typing import Any
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from enum import Enum
@@ -75,7 +75,7 @@ class PublishDecision:
 # ── public API ────────────────────────────────────────────────────────────────
 
 def decide(
-    cluster: sqlite3.Row,
+    cluster: Any,
     score_result: ScoreResult,
 ) -> PublishDecision:
     """
@@ -162,7 +162,7 @@ def decide(
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-def _in_cooldown(cluster: sqlite3.Row) -> bool:
+def _in_cooldown(cluster: Any) -> bool:
     raw = cluster["cooldown_until"]
     if not raw:
         return False
@@ -173,7 +173,7 @@ def _in_cooldown(cluster: sqlite3.Row) -> bool:
         return False
 
 
-def _is_stale(cluster: sqlite3.Row) -> bool:
+def _is_stale(cluster: Any) -> bool:
     """
     Returns True if the cluster was first seen more than FRESHNESS_HOURS ago.
     Used to silence unpublished clusters that were never promoted (low score clusters

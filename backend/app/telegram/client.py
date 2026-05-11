@@ -17,8 +17,9 @@ Retry matrix:
 
 import asyncio
 import logging
-import sqlite3
-from typing import Optional
+from typing import Any, Optional
+
+from app.db.database import DBConnection
 
 import aiohttp
 
@@ -225,8 +226,8 @@ async def send_text(text: str) -> Optional[int]:
 
 
 async def send(
-    db: sqlite3.Connection,
-    cluster: sqlite3.Row,
+    db: DBConnection,
+    cluster: Any,
     score_result: ScoreResult,
     pub_decision: PublishDecision,
     ai_analysis: Optional[AIAnalysis] = None,

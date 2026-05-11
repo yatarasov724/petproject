@@ -10,7 +10,6 @@ Covers:
 - article_count always incremented on join
 """
 
-import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -24,7 +23,7 @@ from tests.conftest import make_article, db  # noqa: F401
 
 def _cluster_row(db, cluster_id):
     return db.execute(
-        "SELECT * FROM event_clusters WHERE id = ?", (cluster_id,)
+        "SELECT * FROM event_clusters WHERE id = %s", (cluster_id,)
     ).fetchone()
 
 

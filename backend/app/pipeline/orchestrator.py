@@ -29,16 +29,17 @@ Sequence for each article
 
 import asyncio
 import logging
-import sqlite3
 from dataclasses import dataclass
+from typing import Any
 from datetime import datetime, timezone, timedelta
 from enum import Enum
 
-from app.ai import analyzer
+from app.ai import analyzer, embedder
 from app.bot.portfolio import notify as _notify_portfolio
 from app.core import metrics
 from app.core.config import settings
 from app.db import queries
+from app.db.database import DBConnection
 from app.pipeline import dedup, clusterer, scorer
 from app.pipeline.normalizer import RawArticle
 from app.pipeline.publish_decision import decide, Decision, PublishDecision, COOLDOWN_HOURS
@@ -49,6 +50,11 @@ from app.telegram.formatter import format_message
 # Articles older than this are skipped before entering the pipeline.
 # Prevents publishing stale RSS entries that appeared late in the feed.
 ARTICLE_MAX_AGE_HOURS = 24
+
+# Cosine similarity threshold for cross-cluster dup guard when embeddings are available.
+# Lower than clusterer.COSINE_THRESHOLD (0.80) to catch near-duplicate clusters that slipped
+# through the dedup stage due to differently-worded headlines from different sources.
+DUP_GUARD_COSINE_THRESHOLD = 0.75
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +83,7 @@ class ArticleResult:
 
 # ── public API ────────────────────────────────────────────────────────────────
 
-async def process(db: sqlite3.Connection, article: RawArticle) -> ArticleResult:
+async def process(db: DBConnection, article: RawArticle) -> ArticleResult:
     """
     Run one article through the full pipeline.
     Never raises — all exceptions are caught and returned as Outcome.ERROR.
@@ -105,7 +111,7 @@ async def process(db: sqlite3.Connection, article: RawArticle) -> ArticleResult:
 
 # ── internals ─────────────────────────────────────────────────────────────────
 
-async def _run(db: sqlite3.Connection, article: RawArticle) -> ArticleResult:
+async def _run(db: DBConnection, article: RawArticle) -> ArticleResult:
     short = article.title[:70]
 
     # ── step 1: dedup ─────────────────────────────────────────────────────
@@ -224,31 +230,52 @@ async def _run(db: sqlite3.Connection, article: RawArticle) -> ArticleResult:
                 score=score_result.score, cluster_id=cluster["id"],
             )
 
-        recent_tokens = queries.get_recently_sent_title_tokens(
+        sent_clusters = queries.get_recently_sent_clusters(
             db, within_hours=COOLDOWN_HOURS, exclude_cluster_id=cluster["id"]
         )
-        cluster_tokens = cluster["title_tokens"]
-        for sent_tokens in recent_tokens:
-            j = dedup.jaccard(cluster_tokens, sent_tokens)
-            c, shared = dedup.containment(cluster_tokens, sent_tokens)
-            is_near_dup = j >= dedup.JACCARD_THRESHOLD or (
-                shared >= dedup.CONTAINMENT_MIN_SHARED and c >= dedup.CONTAINMENT_THRESHOLD
-            )
-            if is_near_dup:
-                metrics.inc(metrics.EVENTS_SILENCED)
-                logger.info(
-                    "dup guard: cross-cluster near-dup for cluster #%d "
-                    "(jaccard=%.2f containment=%.2f shared=%d), silencing",
-                    cluster["id"],
-                    j,
-                    c,
-                    shared,
-                    extra={"event": "dup_guard_cross_cluster", "cluster_id": cluster["id"]},
+        cluster_tokens   = cluster["title_tokens"]
+        cluster_emb      = cluster["embedding"]
+        for sent_row in sent_clusters:
+            sent_tokens = sent_row["title_tokens"]
+            sent_emb    = sent_row["embedding"]
+
+            if cluster_emb is not None and sent_emb is not None:
+                cos = embedder.cosine(cluster_emb, sent_emb)
+                is_near_dup = cos >= DUP_GUARD_COSINE_THRESHOLD
+                if is_near_dup:
+                    metrics.inc(metrics.EVENTS_SILENCED)
+                    logger.info(
+                        "dup guard: cross-cluster near-dup for cluster #%d "
+                        "(cosine=%.2f), silencing",
+                        cluster["id"],
+                        cos,
+                        extra={"event": "dup_guard_cross_cluster", "cluster_id": cluster["id"]},
+                    )
+                    return ArticleResult(
+                        Outcome.SILENCE, article.source_name, short,
+                        score=score_result.score, cluster_id=cluster["id"],
+                    )
+            else:
+                j = dedup.jaccard(cluster_tokens, sent_tokens)
+                c, shared = dedup.containment(cluster_tokens, sent_tokens)
+                is_near_dup = j >= dedup.JACCARD_THRESHOLD or (
+                    shared >= dedup.CONTAINMENT_MIN_SHARED and c >= dedup.CONTAINMENT_THRESHOLD
                 )
-                return ArticleResult(
-                    Outcome.SILENCE, article.source_name, short,
-                    score=score_result.score, cluster_id=cluster["id"],
-                )
+                if is_near_dup:
+                    metrics.inc(metrics.EVENTS_SILENCED)
+                    logger.info(
+                        "dup guard: cross-cluster near-dup for cluster #%d "
+                        "(jaccard=%.2f containment=%.2f shared=%d), silencing",
+                        cluster["id"],
+                        j,
+                        c,
+                        shared,
+                        extra={"event": "dup_guard_cross_cluster", "cluster_id": cluster["id"]},
+                    )
+                    return ArticleResult(
+                        Outcome.SILENCE, article.source_name, short,
+                        score=score_result.score, cluster_id=cluster["id"],
+                    )
 
     # ── step 7: publish decision ──────────────────────────────────────────
     pub = decide(cluster, score_result)
@@ -343,7 +370,7 @@ async def _run(db: sqlite3.Connection, article: RawArticle) -> ArticleResult:
 async def _ai_enrich(
     title: str,
     content: str,
-    cluster: sqlite3.Row,
+    cluster: Any,
     score_result: scorer.ScoreResult,
     pub: PublishDecision,
     message_id: int,

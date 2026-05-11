@@ -2,22 +2,50 @@
 Shared fixtures for the test suite.
 
 Design decisions:
-- In-memory SQLite (:memory:) — no file I/O, no cleanup, no concurrent-write issues.
-- Schema applied via executescript from the real schema.sql — keeps tests in sync
-  with production DDL automatically.
-- make_article() factory — builds a RawArticle with sensible defaults so each test
-  only overrides what it actually cares about.
+- Connects to a running PostgreSQL instance (start with: docker compose up -d postgres).
+- TEST_DATABASE_URL env var overrides the default DSN.
+- Schema applied once per session; tables truncated between tests for isolation.
+- make_article() factory — builds a RawArticle with sensible defaults.
 """
 
 import hashlib
-import sqlite3
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
+import psycopg2
 import pytest
 
+from app.db.database import DBConnection, _split_sql
 from app.pipeline.normalizer import RawArticle
+
+_SCHEMA_PATH = Path(__file__).parent.parent / "app" / "db" / "schema.sql"
+
+_TEST_DSN = os.getenv(
+    "TEST_DATABASE_URL",
+    "postgresql://postgres:postgres@localhost/moex_assistant_test",
+)
+
+
+@pytest.fixture(scope="session")
+def _init_test_db():
+    """Create the test database and apply the schema once per session."""
+    base, _, dbname = _TEST_DSN.rpartition("/")
+    admin = psycopg2.connect(base + "/postgres")
+    admin.autocommit = True
+    with admin.cursor() as cur:
+        cur.execute(f"DROP DATABASE IF EXISTS {dbname}")
+        cur.execute(f"CREATE DATABASE {dbname}")
+    admin.close()
+
+    conn = psycopg2.connect(_TEST_DSN)
+    conn.autocommit = False
+    with conn.cursor() as cur:
+        for stmt in _split_sql(_SCHEMA_PATH.read_text()):
+            cur.execute(stmt)
+    conn.commit()
+    conn.close()
 
 
 @pytest.fixture(autouse=True)
@@ -43,25 +71,39 @@ def _no_real_embedder():
     with patch("app.ai.embedder.embed", return_value=None):
         yield
 
-_SCHEMA_PATH = Path(__file__).parent.parent / "app" / "db" / "schema.sql"
-
 
 @pytest.fixture()
-def db() -> sqlite3.Connection:
-    """In-memory SQLite connection with the production schema applied."""
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.executescript(_SCHEMA_PATH.read_text())
-    # Seed a minimal rss_sources row so seen_articles FK is satisfiable
-    conn.execute(
-        "INSERT INTO rss_sources (id, name, url) VALUES (1, 'TestFeed', 'http://test.local/rss')"
-    )
-    conn.execute(
-        "INSERT INTO rss_sources (id, name, url) VALUES (2, 'TestFeed2', 'http://test2.local/rss')"
-    )
+def db(_init_test_db) -> DBConnection:
+    """
+    Per-test connection with seed sources.
+    All changes are rolled back via TRUNCATE after the test.
+    """
+    conn = psycopg2.connect(_TEST_DSN)
+    conn.autocommit = False
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO rss_sources (id, name, url) OVERRIDING SYSTEM VALUE "
+            "VALUES (1, 'TestFeed', 'http://test.local/rss')"
+        )
+        cur.execute(
+            "INSERT INTO rss_sources (id, name, url) OVERRIDING SYSTEM VALUE "
+            "VALUES (2, 'TestFeed2', 'http://test2.local/rss')"
+        )
+        cur.execute("SELECT setval('rss_sources_id_seq', 2)")
     conn.commit()
-    yield conn
+
+    yield DBConnection(conn)
+
+    # Rollback any aborted transaction before cleanup (test may have failed mid-way)
+    conn.rollback()
+    # Truncate in FK-safe order (children before parents)
+    with conn.cursor() as cur:
+        cur.execute(
+            "TRUNCATE telegram_sends, seen_articles, portfolio_subscriptions, "
+            "event_clusters, rss_sources RESTART IDENTITY"
+        )
+    conn.commit()
     conn.close()
 
 

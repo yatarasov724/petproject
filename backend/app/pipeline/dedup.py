@@ -49,7 +49,7 @@ Why containment threshold = 0.65 with min 3 shared tokens?
 """
 
 import logging
-import sqlite3
+from app.db.database import DBConnection
 from dataclasses import dataclass
 from enum import Enum
 
@@ -85,7 +85,7 @@ class DedupResult:
 
 # ── public API ────────────────────────────────────────────────────────────────
 
-def check(db: sqlite3.Connection, article: RawArticle) -> DedupResult:
+def check(db: DBConnection, article: RawArticle) -> DedupResult:
     """
     Run all dedup stages. Returns a DedupResult.
     Does NOT write to DB — call record() separately after deciding to keep.
@@ -133,7 +133,7 @@ def check(db: sqlite3.Connection, article: RawArticle) -> DedupResult:
 
 
 def record(
-    db: sqlite3.Connection,
+    db: DBConnection,
     article: RawArticle,
     cluster_id: int | None = None,
     *,

@@ -26,8 +26,10 @@ pipeline continues to work without embeddings.
 """
 
 import logging
-import sqlite3
 from dataclasses import dataclass
+from typing import Any
+
+from app.db.database import DBConnection
 
 from app.ai import embedder
 from app.ai.filter import extract_tickers
@@ -57,7 +59,7 @@ class ClusterResult:
 # ── public API ────────────────────────────────────────────────────────────────
 
 def find_or_create(
-    db: sqlite3.Connection,
+    db: DBConnection,
     article: RawArticle,
     market_score: int = 0,
     *,
@@ -121,7 +123,7 @@ def find_or_create(
 def _find_best_match(
     article_tokens: set[str],
     article_embedding: bytes | None,
-    candidates: list[sqlite3.Row],
+    candidates: list[Any],
 ) -> tuple[int | None, float]:
     """
     Scan candidate clusters, return (best_cluster_id, best_score) or (None, 0).
@@ -155,7 +157,7 @@ def _find_best_match(
 
 
 def _create_new_cluster(
-    db: sqlite3.Connection,
+    db: DBConnection,
     article: RawArticle,
     market_score: int,
     embedding: bytes | None,
@@ -177,8 +179,8 @@ def _create_new_cluster(
 
 
 def _update_existing_cluster(
-    db: sqlite3.Connection,
-    cluster: sqlite3.Row,
+    db: DBConnection,
+    cluster: Any,
     article: RawArticle,
     article_token_set: set[str],
     market_score: int,

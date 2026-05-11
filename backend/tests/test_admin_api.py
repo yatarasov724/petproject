@@ -1,37 +1,51 @@
 """
 Tests for the Admin API (MVP-7).
 
-Uses FastAPI TestClient with an in-memory SQLite DB injected via dependency override.
+Uses FastAPI TestClient with a PostgreSQL test DB injected via dependency override.
 No real network calls, no scheduler, no Telegram.
 """
 
-import sqlite3
-from pathlib import Path
-
+import os
+import psycopg2
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.api.routes.admin import _get_db
+from app.db.database import DBConnection
 
-_SCHEMA_PATH = Path(__file__).parent.parent / "app" / "db" / "schema.sql"
-_ADMIN_KEY   = "test-secret-key"
+_ADMIN_KEY = "test-secret-key"
 
+_TEST_DSN = os.getenv(
+    "TEST_DATABASE_URL",
+    "postgresql://postgres:postgres@localhost/moex_assistant_test",
+)
 
-# ── fixtures ──────────────────────────────────────────────────────────────────
 
 @pytest.fixture()
-def mem_db() -> sqlite3.Connection:
-    """In-memory DB with production schema and one seed source."""
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.executescript(_SCHEMA_PATH.read_text())
-    conn.execute(
-        "INSERT INTO rss_sources (id, name, url) VALUES (1, 'TestFeed', 'https://test.local/rss')"
-    )
+def mem_db(_init_test_db) -> DBConnection:
+    """PostgreSQL connection with one seed source; cleaned up after each test."""
+    conn = psycopg2.connect(_TEST_DSN)
+    conn.autocommit = False
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO rss_sources (id, name, url) OVERRIDING SYSTEM VALUE "
+            "VALUES (1, 'TestFeed', 'https://test.local/rss')"
+        )
+        cur.execute("SELECT setval('rss_sources_id_seq', 1)")
     conn.commit()
-    yield conn
+
+    db = DBConnection(conn)
+    yield db
+
+    conn.rollback()
+    with conn.cursor() as cur:
+        cur.execute(
+            "TRUNCATE telegram_sends, seen_articles, portfolio_subscriptions, "
+            "event_clusters, rss_sources RESTART IDENTITY"
+        )
+    conn.commit()
     conn.close()
 
 
@@ -39,7 +53,6 @@ def mem_db() -> sqlite3.Connection:
 def client(mem_db, monkeypatch):
     """TestClient with DB and secret_key overrides."""
     monkeypatch.setattr("app.core.config.settings.secret_key", _ADMIN_KEY)
-
     app.dependency_overrides[_get_db] = lambda: mem_db
     yield TestClient(app, raise_server_exceptions=True)
     app.dependency_overrides.clear()
@@ -145,12 +158,12 @@ class TestDisableSource:
         resp = client.delete("/admin/sources/1", headers=_auth())
         assert resp.status_code == 204
 
-        row = mem_db.execute("SELECT enabled FROM rss_sources WHERE id=1").fetchone()
+        row = mem_db.execute("SELECT enabled FROM rss_sources WHERE id=%s", (1,)).fetchone()
         assert row["enabled"] == 0
 
     def test_row_still_exists_after_disable(self, client, mem_db):
         client.delete("/admin/sources/1", headers=_auth())
-        row = mem_db.execute("SELECT id FROM rss_sources WHERE id=1").fetchone()
+        row = mem_db.execute("SELECT id FROM rss_sources WHERE id=%s", (1,)).fetchone()
         assert row is not None, "Row must not be physically deleted"
 
     def test_nonexistent_returns_404(self, client):
@@ -175,7 +188,7 @@ class TestUpdateSource:
         assert resp.json()["url"] == "https://updated.example.com/rss"
 
     def test_re_enable_disabled_source(self, client, mem_db):
-        mem_db.execute("UPDATE rss_sources SET enabled=0 WHERE id=1")
+        mem_db.execute("UPDATE rss_sources SET enabled=0 WHERE id=%s", (1,))
         mem_db.commit()
 
         resp = client.put("/admin/sources/1", json={"enabled": True}, headers=_auth())
@@ -201,7 +214,8 @@ class TestResetBackoff:
     def test_reset_clears_backoff(self, client, mem_db):
         mem_db.execute(
             "UPDATE rss_sources SET status='backoff', error_count=5, "
-            "next_retry_at='2030-01-01T00:00:00Z' WHERE id=1"
+            "next_retry_at='2030-01-01T00:00:00Z' WHERE id=%s",
+            (1,),
         )
         mem_db.commit()
 
@@ -212,7 +226,7 @@ class TestResetBackoff:
         assert body["error_count"] == 0
 
     def test_reset_clears_dead_status(self, client, mem_db):
-        mem_db.execute("UPDATE rss_sources SET status='dead', error_count=10 WHERE id=1")
+        mem_db.execute("UPDATE rss_sources SET status='dead', error_count=10 WHERE id=%s", (1,))
         mem_db.commit()
 
         resp = client.post("/admin/sources/1/reset", headers=_auth())

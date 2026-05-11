@@ -1,6 +1,8 @@
-import sqlite3
 import logging
 from pathlib import Path
+
+import psycopg2
+import psycopg2.extras
 
 from app.core.config import settings
 
@@ -9,63 +11,64 @@ logger = logging.getLogger(__name__)
 _SCHEMA = Path(__file__).parent / "schema.sql"
 
 
-def _db_path() -> str:
-    # settings.database_url looks like "sqlite:///./moex_assistant.db"
-    return settings.database_url.replace("sqlite:///", "")
+class DBConnection:
+    """
+    Thin psycopg2 wrapper providing a sqlite3-like interface:
+    - .execute(sql, params) → cursor (rows as RealDictRow, i.e. dict-like)
+    - .executemany(sql, params_seq)
+    - .commit() / .rollback() / .close()
+    - with conn: → transaction (commit on success, rollback on exception)
+    """
+
+    def __init__(self, conn) -> None:
+        self._conn = conn
+
+    def execute(self, sql: str, params=None):
+        cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(sql, params)
+        return cur
+
+    def executemany(self, sql: str, params_seq) -> None:
+        cur = self._conn.cursor()
+        psycopg2.extras.execute_batch(cur, sql, list(params_seq))
+
+    def commit(self) -> None:
+        self._conn.commit()
+
+    def rollback(self) -> None:
+        self._conn.rollback()
+
+    def close(self) -> None:
+        self._conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        if exc_type:
+            self._conn.rollback()
+        else:
+            self._conn.commit()
+        return False
 
 
-def get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(
-        _db_path(),
-        check_same_thread=False,
-        timeout=10,          # wait up to 10s on SQLITE_BUSY before raising
-    )
-    conn.row_factory = sqlite3.Row
-    # WAL: allows concurrent reads while a write is in progress
-    conn.execute("PRAGMA journal_mode=WAL")
-    # Enforce FK constraints (OFF by default in SQLite)
-    conn.execute("PRAGMA foreign_keys=ON")
-    # Synchronisation: NORMAL is safe with WAL and much faster than FULL
-    conn.execute("PRAGMA synchronous=NORMAL")
-    return conn
+def get_db() -> DBConnection:
+    conn = psycopg2.connect(settings.database_url)
+    conn.autocommit = False
+    return DBConnection(conn)
 
 
 def init_db() -> None:
     schema = _SCHEMA.read_text()
     conn = get_db()
     try:
-        conn.executescript(schema)
-        _migrate(conn)
+        for stmt in _split_sql(schema):
+            conn.execute(stmt)
+        conn.commit()
         logger.info("Database initialized")
     finally:
         conn.close()
 
 
-def _migrate(conn: sqlite3.Connection) -> None:
-    try:
-        conn.execute("ALTER TABLE event_clusters ADD COLUMN tickers TEXT DEFAULT NULL")
-        conn.commit()
-        logger.info("Migration applied: event_clusters.tickers")
-    except sqlite3.OperationalError:
-        pass
-
-    try:
-        conn.execute("ALTER TABLE rss_sources ADD COLUMN source_type TEXT NOT NULL DEFAULT 'rss'")
-        conn.commit()
-        logger.info("Migration applied: rss_sources.source_type")
-    except sqlite3.OperationalError:
-        pass
-
-    try:
-        conn.execute("ALTER TABLE rss_sources ADD COLUMN tg_last_msg_id INTEGER NOT NULL DEFAULT 0")
-        conn.commit()
-        logger.info("Migration applied: rss_sources.tg_last_msg_id")
-    except sqlite3.OperationalError:
-        pass
-
-    try:
-        conn.execute("ALTER TABLE event_clusters ADD COLUMN embedding BLOB DEFAULT NULL")
-        conn.commit()
-        logger.info("Migration applied: event_clusters.embedding")
-    except sqlite3.OperationalError:
-        pass
+def _split_sql(script: str) -> list[str]:
+    return [s.strip() for s in script.split(";") if s.strip()]

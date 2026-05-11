@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     telegram_channel_id: str
 
     # ── optional ──────────────────────────────────────────────────────────────
-    database_url:  str  = "sqlite:///./moex_assistant.db"
+    database_url:  str  = "postgresql://postgres:postgres@localhost/moex_assistant"
     frontend_url:  str  = "http://localhost:3000"
     secret_key:    str  = "changeme"
 

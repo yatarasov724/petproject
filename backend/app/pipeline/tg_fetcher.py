@@ -12,7 +12,7 @@ stays alive across poll cycles.
 
 import asyncio
 import logging
-import sqlite3
+from app.db.database import DBConnection
 from datetime import timezone
 from typing import Any
 
@@ -31,7 +31,7 @@ _entity_cache: dict[str, Any] = {}
 
 
 async def fetch_all_tg(
-    db: sqlite3.Connection,
+    db: DBConnection,
     client: TelegramClient,
 ) -> list[RawArticle]:
     channels = queries.get_active_tg_channels(db)
@@ -66,8 +66,8 @@ async def fetch_all_tg(
 
 async def _fetch_channel(
     client: TelegramClient,
-    db: sqlite3.Connection,
-    source: sqlite3.Row,
+    db: DBConnection,
+    source: Any,
 ) -> list[RawArticle]:
     username   = source["url"].removeprefix("tg://")
     source_id  = source["id"]

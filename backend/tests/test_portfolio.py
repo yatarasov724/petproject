@@ -92,6 +92,7 @@ async def test_notify_sends_dm_to_subscribers(db):
     with (
         patch("app.bot.portfolio.get_db", return_value=db),
         patch("app.bot.portfolio.send_dm", mock_dm),
+        patch.object(db, "close"),
     ):
         from app.bot.portfolio import notify
         await notify("SBER,GAZP", "Банки под давлением", cluster_id=1)
@@ -107,6 +108,7 @@ async def test_notify_skips_no_subscribers(db):
     with (
         patch("app.bot.portfolio.get_db", return_value=db),
         patch("app.bot.portfolio.send_dm", mock_dm),
+        patch.object(db, "close"),
     ):
         from app.bot.portfolio import notify
         await notify("GAZP", "Газпром снижает дивиденды", cluster_id=2)
@@ -137,6 +139,7 @@ async def test_notify_message_contains_ticker_and_title(db):
     with (
         patch("app.bot.portfolio.get_db", return_value=db),
         patch("app.bot.portfolio.send_dm", side_effect=capture_dm),
+        patch.object(db, "close"),
     ):
         from app.bot.portfolio import notify
         await notify("SBER", "Сбер снижает прибыль", cluster_id=4)
@@ -206,7 +209,7 @@ async def test_callback_toggle_adds_ticker(db):
         patch("app.bot.commands.edit_dm", mock_edit),
     ):
         from app.bot.commands import handle_update
-        await handle_update(db, _make_callback(111, "t:GAZP"))
+        await handle_update(db, _make_callback(111, "t:GAZP:0"))
 
     assert "GAZP" in queries.get_user_tickers(db, 111)
 
@@ -220,7 +223,7 @@ async def test_callback_toggle_removes_ticker(db):
         patch("app.bot.commands.edit_dm", AsyncMock(return_value=True)),
     ):
         from app.bot.commands import handle_update
-        await handle_update(db, _make_callback(111, "t:GAZP"))
+        await handle_update(db, _make_callback(111, "t:GAZP:0"))
 
     assert "GAZP" not in queries.get_user_tickers(db, 111)
 
@@ -239,7 +242,8 @@ async def test_callback_toggle_keyboard_reflects_state(db):
         patch("app.bot.commands.edit_dm", side_effect=capture_edit),
     ):
         from app.bot.commands import handle_update
-        await handle_update(db, _make_callback(111, "t:SBER"))
+        # SBER is in sector 1 (Банки/Финансы)
+        await handle_update(db, _make_callback(111, "t:SBER:1"))
 
     keyboard = edits[0]
     all_buttons = [btn for row in keyboard["inline_keyboard"] for btn in row]

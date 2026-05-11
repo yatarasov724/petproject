@@ -34,7 +34,7 @@ def is_russia_relevant(cluster) -> bool:
     Return True if the cluster is relevant to the Russian market / MOEX.
 
     cluster — any object supporting ['tickers'], ['keywords'], ['title_tokens']
-              (sqlite3.Row from event_clusters works directly).
+              (dict row from event_clusters works directly).
     """
     if cluster["tickers"]:
         return True

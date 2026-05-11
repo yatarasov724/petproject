@@ -2,8 +2,8 @@
 Tests for app.pipeline.publish_decision.
 
 All 6 decision rules are tested in isolation.
-Cluster state is constructed as a plain dict and passed through sqlite3.Row
-via an in-memory query so the code receives the exact same type it sees in production.
+Cluster state is inserted into the test DB and fetched back as a real row
+so the code receives the exact same type it sees in production.
 
 Covers:
   Rule 1 — score below threshold → SILENCE
@@ -15,7 +15,6 @@ Covers:
   Edge cases: cooldown exactly expired, cooldown_until=None, published_score=None
 """
 
-import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -45,7 +44,7 @@ def _iso(dt: datetime) -> str:
 def _make_cluster_row(db, **overrides):
     """
     Insert a cluster into the in-memory DB with given field values, then
-    fetch it back as a real sqlite3.Row — exactly what production code uses.
+    fetch it back as a real dict row — exactly what production code uses.
     """
     defaults = {
         "canonical_title": "ЦБ повысил ключевую ставку",
@@ -69,7 +68,8 @@ def _make_cluster_row(db, **overrides):
             (canonical_title, title_tokens, keywords, best_score, source_count,
              article_count, status, first_seen_at, last_updated_at,
              last_sent_at, cooldown_until, published_score)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        RETURNING id
         """,
         (
             defaults["canonical_title"], defaults["title_tokens"],
@@ -81,7 +81,7 @@ def _make_cluster_row(db, **overrides):
         ),
     )
     db.commit()
-    return queries.get_cluster(db, cur.lastrowid)
+    return queries.get_cluster(db, cur.fetchone()["id"])
 
 
 def _score(score_value: int):

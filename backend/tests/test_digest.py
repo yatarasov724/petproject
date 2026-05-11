@@ -7,7 +7,6 @@ Covers:
 - ai.digest._validate(): DigestAnalysis coercion and validation
 """
 
-import sqlite3
 from datetime import datetime, timedelta, timezone
 
 from app.db import queries
@@ -19,7 +18,7 @@ from app.pipeline.relevance import is_russia_relevant
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _insert_cluster(
-    db: sqlite3.Connection,
+    db,
     *,
     title: str,
     score: int = 50,
@@ -32,17 +31,19 @@ def _insert_cluster(
         "%Y-%m-%dT%H:%M:%SZ"
     )
     tokens = title.lower().replace(" ", "_")
-    db.execute(
+    cur = db.execute(
         """
         INSERT INTO event_clusters
             (canonical_title, title_tokens, keywords, best_score, source_count,
              status, last_sent_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
         """,
         (title, tokens, tokens, score, source_count, status, sent_at),
     )
+    cluster_id = cur.fetchone()["id"]
     db.commit()
-    return db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    return cluster_id
 
 
 # ── get_top_sent_clusters ─────────────────────────────────────────────────────
@@ -144,14 +145,15 @@ class TestDigestValidate:
 
 # ── format_digest ─────────────────────────────────────────────────────────────
 
-def _make_row(title: str, score: int = 50, source_count: int = 2) -> sqlite3.Row:
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.execute(
-        "CREATE TABLE t (id INT, canonical_title TEXT, best_score INT, source_count INT, tickers TEXT, last_sent_at TEXT)"
-    )
-    conn.execute("INSERT INTO t VALUES (1, ?, ?, ?, NULL, NULL)", (title, score, source_count))
-    return conn.execute("SELECT * FROM t").fetchone()
+def _make_row(title: str, score: int = 50, source_count: int = 2) -> dict:
+    return {
+        "id": 1,
+        "canonical_title": title,
+        "best_score": score,
+        "source_count": source_count,
+        "tickers": None,
+        "last_sent_at": None,
+    }
 
 
 # ── is_russia_relevant ───────────────────────────────────────────────────────

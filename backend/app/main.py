@@ -13,8 +13,6 @@ Shutdown
   1. runner.stop()              — graceful scheduler shutdown
 """
 
-import sqlite3
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -90,18 +88,21 @@ def health():
         source_rows = db.execute(
             "SELECT status, COUNT(*) AS n FROM rss_sources GROUP BY status"
         ).fetchall()
+        from datetime import datetime, timedelta, timezone
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
         clusters_24h = db.execute(
-            "SELECT COUNT(*) FROM event_clusters "
-            "WHERE first_seen_at >= datetime('now', '-24 hours')"
-        ).fetchone()[0]
+            "SELECT COUNT(*) AS n FROM event_clusters WHERE first_seen_at >= %s",
+            (cutoff,),
+        ).fetchone()["n"]
         sends_24h = db.execute(
-            "SELECT COUNT(*) FROM telegram_sends "
-            "WHERE sent_at >= datetime('now', '-24 hours')"
-        ).fetchone()[0]
+            "SELECT COUNT(*) AS n FROM telegram_sends WHERE sent_at >= %s",
+            (cutoff,),
+        ).fetchone()["n"]
         sends_ok = db.execute(
-            "SELECT COUNT(*) FROM telegram_sends "
-            "WHERE sent_at >= datetime('now', '-24 hours') AND ok = 1"
-        ).fetchone()[0]
+            "SELECT COUNT(*) AS n FROM telegram_sends WHERE sent_at >= %s AND ok = 1",
+            (cutoff,),
+        ).fetchone()["n"]
 
         return {
             "status": "ok",
@@ -111,7 +112,7 @@ def health():
             "sends_ok_24h": sends_ok,
             "counters":     metrics.snapshot(),
         }
-    except sqlite3.Error as exc:
+    except Exception as exc:
         logger.error("health check db error: %s", exc)
         return {"status": "error", "detail": str(exc)}
     finally:

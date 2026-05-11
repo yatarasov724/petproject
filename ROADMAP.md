@@ -21,7 +21,7 @@ _Обновлено: 2026-05-11_
 | ✅ | Admin API — CRUD для rss_sources |
 | ✅ | Мониторинг / алертинг — heartbeat + silence alerts |
 | ✅ | Источники — 14 активных (цель 15–20 почти достигнута) |
-| ❌ | PostgreSQL вместо SQLite |
+| ✅ | PostgreSQL вместо SQLite |
 | ✅ | Векторные эмбеддинги (sentence-transformers) вместо containment |
 
 ## v2 (средний горизонт)

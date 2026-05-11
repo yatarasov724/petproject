@@ -8,7 +8,6 @@ Covers:
 - MVP-5: LIMIT and index on seen_articles
 """
 
-import sqlite3
 import time
 
 import pytest
@@ -190,7 +189,7 @@ class TestRecord:
         dedup.record(db, article, cluster_id=cluster_id)
 
         row = db.execute(
-            "SELECT cluster_id FROM seen_articles WHERE raw_hash = ?",
+            "SELECT cluster_id FROM seen_articles WHERE raw_hash = %s",
             (article.raw_hash,),
         ).fetchone()
         assert row["cluster_id"] == cluster_id
@@ -200,7 +199,7 @@ class TestRecord:
         dedup.record(db, article, cluster_id=None)
 
         row = db.execute(
-            "SELECT source_id FROM seen_articles WHERE raw_hash = ?",
+            "SELECT source_id FROM seen_articles WHERE raw_hash = %s",
             (article.raw_hash,),
         ).fetchone()
         assert row["source_id"] == 2
@@ -208,14 +207,15 @@ class TestRecord:
 
 # ── MVP-5: LIMIT and index ─────────────────────────────────────────────────────
 
-def _insert_bulk_seen_articles(db: sqlite3.Connection, count: int) -> None:
+def _insert_bulk_seen_articles(db, count: int) -> None:
     """Insert `count` distinct seen_articles rows directly (bypasses dedup logic)."""
     now = "2026-05-05T21:00:00Z"
     db.executemany(
         """
-        INSERT OR IGNORE INTO seen_articles
+        INSERT INTO seen_articles
             (source_id, raw_hash, title_tokens, url, published_at, seen_at)
-        VALUES (1, ?, ?, NULL, ?, ?)
+        VALUES (1, %s, %s, NULL, %s, %s)
+        ON CONFLICT (raw_hash) DO NOTHING
         """,
         [
             (f"bulk_hash_{i}", f"токен{i} общий рынок", now, now)
@@ -276,10 +276,10 @@ class TestNearDedupLimit:
 
     def test_index_exists_on_seen_at(self, db):
         """Schema must define an index on seen_articles(seen_at)."""
-        indexes = {
-            row[1]
-            for row in db.execute("PRAGMA index_list(seen_articles)").fetchall()
-        }
+        rows = db.execute(
+            "SELECT indexname FROM pg_indexes WHERE tablename = 'seen_articles'"
+        ).fetchall()
+        indexes = {row["indexname"] for row in rows}
         assert any("seen_at" in idx for idx in indexes), (
             f"Expected an index on seen_at, found: {indexes}"
         )

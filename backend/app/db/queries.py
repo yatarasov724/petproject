@@ -1,13 +1,16 @@
 """
 All SQL operations in one place.
-Each function receives an open sqlite3.Connection and is responsible
+Each function receives an open DBConnection and is responsible
 for committing only what it touches. The caller owns the connection lifecycle.
 """
 
-import sqlite3
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional
+
+import psycopg2
+
+from app.db.database import DBConnection
 
 logger = logging.getLogger(__name__)
 
@@ -55,13 +58,13 @@ _BACKOFF_MAX_MINUTES = 120
 _DEAD_AFTER_ERRORS   = 10
 
 
-def seed_sources(db: sqlite3.Connection) -> None:
+def seed_sources(db: DBConnection) -> None:
     db.executemany(
-        "INSERT OR IGNORE INTO rss_sources (name, url) VALUES (?, ?)",
+        "INSERT INTO rss_sources (name, url) VALUES (%s, %s) ON CONFLICT DO NOTHING",
         _RSS_SEEDS,
     )
     db.executemany(
-        "INSERT OR IGNORE INTO rss_sources (name, url, source_type) VALUES (?, ?, 'telegram')",
+        "INSERT INTO rss_sources (name, url, source_type) VALUES (%s, %s, 'telegram') ON CONFLICT DO NOTHING",
         _TG_SEEDS,
     )
     db.commit()
@@ -70,7 +73,7 @@ def seed_sources(db: sqlite3.Connection) -> None:
 
 # ── rss_sources reads ─────────────────────────────────────────────────────────
 
-def get_active_sources(db: sqlite3.Connection) -> list[sqlite3.Row]:
+def get_active_sources(db: DBConnection) -> list[Any]:
     """
     Return RSS sources that are enabled, not dead, and either:
     - have no retry delay (status='ok'), or
@@ -84,14 +87,14 @@ def get_active_sources(db: sqlite3.Connection) -> list[sqlite3.Row]:
         WHERE  enabled = 1
           AND  source_type = 'rss'
           AND  status  != 'dead'
-          AND  (next_retry_at IS NULL OR next_retry_at <= ?)
+          AND  (next_retry_at IS NULL OR next_retry_at <= %s)
         ORDER  BY id
         """,
         (now,),
     ).fetchall()
 
 
-def get_active_tg_channels(db: sqlite3.Connection) -> list[sqlite3.Row]:
+def get_active_tg_channels(db: DBConnection) -> list[Any]:
     """Return Telegram channels that are enabled and not dead."""
     now = _utcnow_iso()
     return db.execute(
@@ -101,7 +104,7 @@ def get_active_tg_channels(db: sqlite3.Connection) -> list[sqlite3.Row]:
         WHERE  enabled = 1
           AND  source_type = 'telegram'
           AND  status  != 'dead'
-          AND  (next_retry_at IS NULL OR next_retry_at <= ?)
+          AND  (next_retry_at IS NULL OR next_retry_at <= %s)
         ORDER  BY id
         """,
         (now,),
@@ -109,20 +112,20 @@ def get_active_tg_channels(db: sqlite3.Connection) -> list[sqlite3.Row]:
 
 
 def update_tg_channel_ok(
-    db: sqlite3.Connection,
+    db: DBConnection,
     source_id: int,
     last_msg_id: int,
 ) -> None:
     db.execute(
         """
         UPDATE rss_sources
-        SET    tg_last_msg_id  = ?,
-               last_fetched_at = ?,
+        SET    tg_last_msg_id  = %s,
+               last_fetched_at = %s,
                error_count     = 0,
                last_error_at   = NULL,
                next_retry_at   = NULL,
                status          = 'ok'
-        WHERE  id = ?
+        WHERE  id = %s
         """,
         (last_msg_id, _utcnow_iso(), source_id),
     )
@@ -132,7 +135,7 @@ def update_tg_channel_ok(
 # ── rss_sources writes ────────────────────────────────────────────────────────
 
 def update_source_ok(
-    db: sqlite3.Connection,
+    db: DBConnection,
     source_id: int,
     etag: Optional[str],
     last_modified: Optional[str],
@@ -141,28 +144,28 @@ def update_source_ok(
     db.execute(
         """
         UPDATE rss_sources
-        SET    etag            = ?,
-               last_modified   = ?,
-               last_fetched_at = ?,
+        SET    etag            = %s,
+               last_modified   = %s,
+               last_fetched_at = %s,
                error_count     = 0,
                last_error_at   = NULL,
                next_retry_at   = NULL,
                status          = 'ok'
-        WHERE  id = ?
+        WHERE  id = %s
         """,
         (etag, last_modified, _utcnow_iso(), source_id),
     )
     db.commit()
 
 
-def update_source_error(db: sqlite3.Connection, source_id: int) -> str:
+def update_source_error(db: DBConnection, source_id: int) -> str:
     """
     Called after a failed fetch.
     Increments error_count, computes exponential next_retry_at, flips status.
     Returns the new status: 'backoff' or 'dead'.
     """
     row = db.execute(
-        "SELECT error_count FROM rss_sources WHERE id = ?",
+        "SELECT error_count FROM rss_sources WHERE id = %s",
         (source_id,),
     ).fetchone()
 
@@ -177,11 +180,11 @@ def update_source_error(db: sqlite3.Connection, source_id: int) -> str:
     db.execute(
         """
         UPDATE rss_sources
-        SET    error_count   = ?,
-               last_error_at = ?,
-               next_retry_at = ?,
-               status        = ?
-        WHERE  id = ?
+        SET    error_count   = %s,
+               last_error_at = %s,
+               next_retry_at = %s,
+               status        = %s
+        WHERE  id = %s
         """,
         (new_count, _utcnow_iso(), _iso(next_retry), new_status, source_id),
     )
@@ -206,16 +209,16 @@ def update_source_error(db: sqlite3.Connection, source_id: int) -> str:
 
 # ── seen_articles ─────────────────────────────────────────────────────────────
 
-def is_exact_duplicate(db: sqlite3.Connection, raw_hash: str) -> bool:
+def is_exact_duplicate(db: DBConnection, raw_hash: str) -> bool:
     row = db.execute(
-        "SELECT 1 FROM seen_articles WHERE raw_hash = ?",
+        "SELECT 1 FROM seen_articles WHERE raw_hash = %s",
         (raw_hash,),
     ).fetchone()
     return row is not None
 
 
 def get_recent_title_tokens(
-    db: sqlite3.Connection,
+    db: DBConnection,
     within_hours: int = 4,
     limit: int = 1000,
 ) -> list[str]:
@@ -230,14 +233,14 @@ def get_recent_title_tokens(
     """
     cutoff = _iso(datetime.now(timezone.utc) - timedelta(hours=within_hours))
     rows = db.execute(
-        "SELECT title_tokens FROM seen_articles WHERE seen_at >= ? ORDER BY seen_at DESC LIMIT ?",
+        "SELECT title_tokens FROM seen_articles WHERE seen_at >= %s ORDER BY seen_at DESC LIMIT %s",
         (cutoff, limit),
     ).fetchall()
     return [r["title_tokens"] for r in rows]
 
 
 def insert_seen_article(
-    db: sqlite3.Connection,
+    db: DBConnection,
     source_id: int,
     raw_hash: str,
     title_tokens: str,
@@ -247,27 +250,30 @@ def insert_seen_article(
     *,
     commit: bool = True,
 ) -> Optional[int]:
-    """INSERT OR IGNORE — idempotent on restart. Returns rowid or None if duplicate."""
+    """INSERT ... ON CONFLICT DO NOTHING — idempotent on restart. Returns row id or None if duplicate."""
     cur = db.execute(
         """
-        INSERT OR IGNORE INTO seen_articles
+        INSERT INTO seen_articles
             (source_id, raw_hash, title_tokens, url, published_at, cluster_id)
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (raw_hash) DO NOTHING
+        RETURNING id
         """,
         (source_id, raw_hash, title_tokens, url, published_at, cluster_id),
     )
     if commit:
         db.commit()
-    return cur.lastrowid if cur.rowcount else None
+    row = cur.fetchone()
+    return row["id"] if row else None
 
 
 def assign_cluster(
-    db: sqlite3.Connection,
+    db: DBConnection,
     article_id: int,
     cluster_id: int,
 ) -> None:
     db.execute(
-        "UPDATE seen_articles SET cluster_id = ? WHERE id = ?",
+        "UPDATE seen_articles SET cluster_id = %s WHERE id = %s",
         (cluster_id, article_id),
     )
     db.commit()
@@ -276,9 +282,9 @@ def assign_cluster(
 # ── event_clusters ────────────────────────────────────────────────────────────
 
 def find_candidate_clusters(
-    db: sqlite3.Connection,
+    db: DBConnection,
     within_hours: int = 4,
-) -> list[sqlite3.Row]:
+) -> list[Any]:
     """
     Load clusters whose first_seen_at is within the window.
     Filtering by first_seen_at (not last_updated_at) ensures we still match
@@ -289,7 +295,7 @@ def find_candidate_clusters(
         """
         SELECT *
         FROM   event_clusters
-        WHERE  first_seen_at >= ?
+        WHERE  first_seen_at >= %s
         ORDER  BY first_seen_at DESC
         LIMIT  500
         """,
@@ -298,19 +304,19 @@ def find_candidate_clusters(
 
 
 def get_cluster_source_ids(
-    db: sqlite3.Connection,
+    db: DBConnection,
     cluster_id: int,
 ) -> set[int]:
     """Return source_ids that have already contributed to this cluster."""
     rows = db.execute(
-        "SELECT DISTINCT source_id FROM seen_articles WHERE cluster_id = ?",
+        "SELECT DISTINCT source_id FROM seen_articles WHERE cluster_id = %s",
         (cluster_id,),
     ).fetchall()
     return {r["source_id"] for r in rows}
 
 
 def create_cluster(
-    db: sqlite3.Connection,
+    db: DBConnection,
     canonical_title: str,
     title_tokens: str,
     keywords: str,
@@ -324,18 +330,20 @@ def create_cluster(
         """
         INSERT INTO event_clusters
             (canonical_title, title_tokens, keywords, best_score, tickers, embedding)
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        RETURNING id
         """,
         (canonical_title, title_tokens, keywords, score, tickers or None, embedding),
     )
     if commit:
         db.commit()
-    assert cur.lastrowid is not None  # INSERT without OR IGNORE always sets lastrowid
-    return cur.lastrowid
+    row = cur.fetchone()
+    assert row is not None
+    return row["id"]
 
 
 def update_cluster(
-    db: sqlite3.Connection,
+    db: DBConnection,
     cluster_id: int,
     score: int,
     new_source: bool,
@@ -354,12 +362,12 @@ def update_cluster(
         """
         UPDATE event_clusters
         SET    article_count   = article_count + 1,
-               source_count    = source_count + ?,
-               best_score      = MAX(best_score, ?),
-               keywords        = ?,
-               tickers         = ?,
-               last_updated_at = ?
-        WHERE  id = ?
+               source_count    = source_count + %s,
+               best_score      = GREATEST(best_score, %s),
+               keywords        = %s,
+               tickers         = %s,
+               last_updated_at = %s
+        WHERE  id = %s
         """,
         (1 if new_source else 0, score, merged_keywords, merged_tickers or None, _utcnow_iso(), cluster_id),
     )
@@ -368,7 +376,7 @@ def update_cluster(
 
 
 def mark_cluster_sent(
-    db: sqlite3.Connection,
+    db: DBConnection,
     cluster_id: int,
     decision: str,
     score: int,
@@ -380,11 +388,11 @@ def mark_cluster_sent(
     db.execute(
         """
         UPDATE event_clusters
-        SET    status          = ?,
-               last_sent_at   = ?,
-               cooldown_until  = ?,
-               published_score = ?
-        WHERE  id = ?
+        SET    status          = %s,
+               last_sent_at   = %s,
+               cooldown_until  = %s,
+               published_score = %s
+        WHERE  id = %s
         """,
         (status, _iso(now), cooldown, score, cluster_id),
     )
@@ -392,20 +400,20 @@ def mark_cluster_sent(
 
 
 def get_cluster(
-    db: sqlite3.Connection,
+    db: DBConnection,
     cluster_id: int,
-) -> Optional[sqlite3.Row]:
+) -> Optional[Any]:
     return db.execute(
-        "SELECT * FROM event_clusters WHERE id = ?",
+        "SELECT * FROM event_clusters WHERE id = %s",
         (cluster_id,),
     ).fetchone()
 
 
 def get_top_sent_clusters(
-    db: sqlite3.Connection,
+    db: DBConnection,
     within_hours: int = 24,
     limit: int = 10,
-) -> list[sqlite3.Row]:
+) -> list[Any]:
     """
     Return the top published clusters for the daily digest.
 
@@ -419,10 +427,10 @@ def get_top_sent_clusters(
         SELECT id, canonical_title, best_score, source_count,
                tickers, keywords, title_tokens, last_sent_at
         FROM   event_clusters
-        WHERE  last_sent_at >= ?
+        WHERE  last_sent_at >= %s
           AND  status IN ('published', 'updated')
         ORDER  BY best_score * source_count DESC
-        LIMIT  ?
+        LIMIT  %s
         """,
         (cutoff, limit),
     ).fetchall()
@@ -431,7 +439,7 @@ def get_top_sent_clusters(
 # ── telegram_sends ────────────────────────────────────────────────────────────
 
 def has_recent_send_attempt(
-    db: sqlite3.Connection,
+    db: DBConnection,
     cluster_id: int,
     within_hours: int = 2,
 ) -> bool:
@@ -444,14 +452,14 @@ def has_recent_send_attempt(
     """
     cutoff = _iso(datetime.now(timezone.utc) - timedelta(hours=within_hours))
     row = db.execute(
-        "SELECT 1 FROM telegram_sends WHERE cluster_id = ? AND sent_at >= ? LIMIT 1",
+        "SELECT 1 FROM telegram_sends WHERE cluster_id = %s AND sent_at >= %s LIMIT 1",
         (cluster_id, cutoff),
     ).fetchone()
     return row is not None
 
 
 def get_recently_sent_title_tokens(
-    db: sqlite3.Connection,
+    db: DBConnection,
     within_hours: int = 2,
     exclude_cluster_id: Optional[int] = None,
 ) -> list[str]:
@@ -469,7 +477,7 @@ def get_recently_sent_title_tokens(
             SELECT DISTINCT ec.title_tokens
             FROM   telegram_sends ts
             JOIN   event_clusters ec ON ts.cluster_id = ec.id
-            WHERE  ts.sent_at >= ? AND ts.ok = 1 AND ts.cluster_id != ?
+            WHERE  ts.sent_at >= %s AND ts.ok = 1 AND ts.cluster_id != %s
             """,
             (cutoff, exclude_cluster_id),
         ).fetchall()
@@ -479,15 +487,48 @@ def get_recently_sent_title_tokens(
             SELECT DISTINCT ec.title_tokens
             FROM   telegram_sends ts
             JOIN   event_clusters ec ON ts.cluster_id = ec.id
-            WHERE  ts.sent_at >= ? AND ts.ok = 1
+            WHERE  ts.sent_at >= %s AND ts.ok = 1
             """,
             (cutoff,),
         ).fetchall()
     return [r["title_tokens"] for r in rows]
 
 
+def get_recently_sent_clusters(
+    db: DBConnection,
+    within_hours: int = 2,
+    exclude_cluster_id: Optional[int] = None,
+) -> list[Any]:
+    """
+    Return (title_tokens, embedding) rows for clusters sent successfully within the window.
+
+    Extends get_recently_sent_title_tokens with embeddings so the cross-cluster dup guard
+    can use cosine similarity when embeddings are available, falling back to token overlap.
+    """
+    cutoff = _iso(datetime.now(timezone.utc) - timedelta(hours=within_hours))
+    if exclude_cluster_id is not None:
+        return db.execute(
+            """
+            SELECT DISTINCT ec.title_tokens, ec.embedding
+            FROM   telegram_sends ts
+            JOIN   event_clusters ec ON ts.cluster_id = ec.id
+            WHERE  ts.sent_at >= %s AND ts.ok = 1 AND ts.cluster_id != %s
+            """,
+            (cutoff, exclude_cluster_id),
+        ).fetchall()
+    return db.execute(
+        """
+        SELECT DISTINCT ec.title_tokens, ec.embedding
+        FROM   telegram_sends ts
+        JOIN   event_clusters ec ON ts.cluster_id = ec.id
+        WHERE  ts.sent_at >= %s AND ts.ok = 1
+        """,
+        (cutoff,),
+    ).fetchall()
+
+
 def log_send(
-    db: sqlite3.Connection,
+    db: DBConnection,
     cluster_id: int,
     decision: str,
     score: int,
@@ -502,7 +543,7 @@ def log_send(
         INSERT INTO telegram_sends
             (cluster_id, decision, score, source_count, headline,
              tg_message_id, ok, error_text)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             cluster_id, decision, score, source_count, headline,
@@ -514,7 +555,7 @@ def log_send(
 
 # ── monitoring ────────────────────────────────────────────────────────────────
 
-def get_last_ok_send_at(db: sqlite3.Connection) -> Optional[datetime]:
+def get_last_ok_send_at(db: DBConnection) -> Optional[datetime]:
     """Return the timestamp of the most recent successful Telegram send, or None."""
     row = db.execute(
         "SELECT sent_at FROM telegram_sends WHERE ok=1 ORDER BY sent_at DESC LIMIT 1"
@@ -524,7 +565,7 @@ def get_last_ok_send_at(db: sqlite3.Connection) -> Optional[datetime]:
     return datetime.fromisoformat(row["sent_at"].replace("Z", "+00:00"))
 
 
-def get_source_stats(db: sqlite3.Connection) -> dict[str, int]:
+def get_source_stats(db: DBConnection) -> dict[str, int]:
     """Return counts of enabled sources grouped by status: ok / backoff / dead."""
     rows = db.execute(
         "SELECT status, COUNT(*) AS n FROM rss_sources WHERE enabled = 1 GROUP BY status"
@@ -532,7 +573,7 @@ def get_source_stats(db: sqlite3.Connection) -> dict[str, int]:
     return {r["status"]: r["n"] for r in rows}
 
 
-def get_dead_sources(db: sqlite3.Connection) -> list[sqlite3.Row]:
+def get_dead_sources(db: DBConnection) -> list[Any]:
     """Return all enabled sources currently marked dead."""
     return db.execute(
         "SELECT id, name, url, error_count FROM rss_sources WHERE status = 'dead' AND enabled = 1"
@@ -541,31 +582,32 @@ def get_dead_sources(db: sqlite3.Connection) -> list[sqlite3.Row]:
 
 # ── admin: rss_sources CRUD ───────────────────────────────────────────────────
 
-def get_all_sources(db: sqlite3.Connection) -> list[sqlite3.Row]:
+def get_all_sources(db: DBConnection) -> list[Any]:
     return db.execute(
         "SELECT id, name, url, enabled, status, error_count, last_fetched_at, created_at "
         "FROM rss_sources ORDER BY id"
     ).fetchall()
 
 
-def add_source(db: sqlite3.Connection, name: str, url: str) -> int:
+def add_source(db: DBConnection, name: str, url: str) -> int:
     """
-    Insert a new RSS source. Raises sqlite3.IntegrityError on duplicate name or URL.
+    Insert a new RSS source. Raises psycopg2.errors.UniqueViolation on duplicate name or URL.
     Returns the new row id.
     """
     cur = db.execute(
-        "INSERT INTO rss_sources (name, url) VALUES (?, ?)",
+        "INSERT INTO rss_sources (name, url) VALUES (%s, %s) RETURNING id",
         (name, url),
     )
     db.commit()
-    assert cur.lastrowid is not None
-    return cur.lastrowid
+    row = cur.fetchone()
+    assert row is not None
+    return row["id"]
 
 
-def disable_source(db: sqlite3.Connection, source_id: int) -> bool:
+def disable_source(db: DBConnection, source_id: int) -> bool:
     """Soft-delete: set enabled=0. Returns True if a row was updated."""
     cur = db.execute(
-        "UPDATE rss_sources SET enabled = 0 WHERE id = ?",
+        "UPDATE rss_sources SET enabled = 0 WHERE id = %s",
         (source_id,),
     )
     db.commit()
@@ -573,7 +615,7 @@ def disable_source(db: sqlite3.Connection, source_id: int) -> bool:
 
 
 def update_source(
-    db: sqlite3.Connection,
+    db: DBConnection,
     source_id: int,
     url: Optional[str] = None,
     enabled: Optional[bool] = None,
@@ -585,23 +627,23 @@ def update_source(
     parts: list[str] = []
     params: list = []
     if url is not None:
-        parts.append("url = ?")
+        parts.append("url = %s")
         params.append(url)
     if enabled is not None:
-        parts.append("enabled = ?")
+        parts.append("enabled = %s")
         params.append(1 if enabled else 0)
     if not parts:
         return False
     params.append(source_id)
     cur = db.execute(
-        f"UPDATE rss_sources SET {', '.join(parts)} WHERE id = ?",
+        f"UPDATE rss_sources SET {', '.join(parts)} WHERE id = %s",
         params,
     )
     db.commit()
     return cur.rowcount > 0
 
 
-def reset_source_backoff(db: sqlite3.Connection, source_id: int) -> bool:
+def reset_source_backoff(db: DBConnection, source_id: int) -> bool:
     """Reset backoff state so the source is polled on the next cycle."""
     cur = db.execute(
         """
@@ -610,7 +652,7 @@ def reset_source_backoff(db: sqlite3.Connection, source_id: int) -> bool:
                error_count   = 0,
                last_error_at = NULL,
                next_retry_at = NULL
-        WHERE  id = ?
+        WHERE  id = %s
         """,
         (source_id,),
     )
@@ -620,11 +662,11 @@ def reset_source_backoff(db: sqlite3.Connection, source_id: int) -> bool:
 
 # ── portfolio_subscriptions ───────────────────────────────────────────────────
 
-def get_subscribed_users(db: sqlite3.Connection, tickers: list[str]) -> list[int]:
+def get_subscribed_users(db: DBConnection, tickers: list[str]) -> list[int]:
     """Return user_ids subscribed to any of the given tickers."""
     if not tickers:
         return []
-    placeholders = ",".join("?" * len(tickers))
+    placeholders = ",".join(["%s"] * len(tickers))
     rows = db.execute(
         f"SELECT DISTINCT user_id FROM portfolio_subscriptions WHERE ticker IN ({placeholders})",
         tickers,
@@ -632,32 +674,32 @@ def get_subscribed_users(db: sqlite3.Connection, tickers: list[str]) -> list[int
     return [r["user_id"] for r in rows]
 
 
-def get_user_tickers(db: sqlite3.Connection, user_id: int) -> list[str]:
+def get_user_tickers(db: DBConnection, user_id: int) -> list[str]:
     """Return tickers subscribed by a user, sorted alphabetically."""
     rows = db.execute(
-        "SELECT ticker FROM portfolio_subscriptions WHERE user_id = ? ORDER BY ticker",
+        "SELECT ticker FROM portfolio_subscriptions WHERE user_id = %s ORDER BY ticker",
         (user_id,),
     ).fetchall()
     return [r["ticker"] for r in rows]
 
 
-def set_user_tickers(db: sqlite3.Connection, user_id: int, tickers: list[str]) -> None:
+def set_user_tickers(db: DBConnection, user_id: int, tickers: list[str]) -> None:
     """Replace a user's subscriptions with the given tickers (idempotent)."""
     with db:
         db.execute(
-            "DELETE FROM portfolio_subscriptions WHERE user_id = ?",
+            "DELETE FROM portfolio_subscriptions WHERE user_id = %s",
             (user_id,),
         )
         db.executemany(
-            "INSERT OR IGNORE INTO portfolio_subscriptions (user_id, ticker) VALUES (?, ?)",
+            "INSERT INTO portfolio_subscriptions (user_id, ticker) VALUES (%s, %s) ON CONFLICT DO NOTHING",
             [(user_id, t.upper()) for t in tickers],
         )
 
 
-def clear_user_tickers(db: sqlite3.Connection, user_id: int) -> None:
+def clear_user_tickers(db: DBConnection, user_id: int) -> None:
     """Remove all subscriptions for a user."""
     db.execute(
-        "DELETE FROM portfolio_subscriptions WHERE user_id = ?",
+        "DELETE FROM portfolio_subscriptions WHERE user_id = %s",
         (user_id,),
     )
     db.commit()
@@ -665,14 +707,14 @@ def clear_user_tickers(db: sqlite3.Connection, user_id: int) -> None:
 
 # ── retention ─────────────────────────────────────────────────────────────────
 
-def run_retention(db: sqlite3.Connection) -> None:
+def run_retention(db: DBConnection) -> None:
     with db:
         db.execute(
-            "DELETE FROM seen_articles WHERE seen_at < ?",
+            "DELETE FROM seen_articles WHERE seen_at < %s",
             (_iso(datetime.now(timezone.utc) - timedelta(hours=48)),),
         )
         db.execute(
-            "DELETE FROM event_clusters WHERE first_seen_at < ?",
+            "DELETE FROM event_clusters WHERE first_seen_at < %s",
             (_iso(datetime.now(timezone.utc) - timedelta(days=7)),),
         )
         # reset backoff entries whose retry window has passed
@@ -681,7 +723,7 @@ def run_retention(db: sqlite3.Connection) -> None:
             UPDATE rss_sources
             SET    status = 'ok', next_retry_at = NULL
             WHERE  status = 'backoff'
-              AND  next_retry_at <= ?
+              AND  next_retry_at <= %s
             """,
             (_utcnow_iso(),),
         )

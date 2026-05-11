@@ -30,7 +30,7 @@ Design decisions:
   - AI analysis uses emoji prefix + AI-normalized title + summary + market_effect
 """
 
-import sqlite3
+from typing import Any
 from datetime import datetime, timezone
 from typing import Optional, TYPE_CHECKING
 
@@ -96,7 +96,7 @@ _AFFECTS: dict[EventType, str] = {
 
 
 def format_message(
-    cluster: sqlite3.Row,
+    cluster: Any,
     score_result: ScoreResult,
     decision: Decision,
     ai_analysis: Optional[AIAnalysis] = None,
@@ -157,7 +157,7 @@ def format_message(
 
 
 def format_digest(
-    clusters: list[sqlite3.Row],
+    clusters: list[Any],
     ai_digest: Optional["DigestAnalysis"],
     label: str,
 ) -> str:
