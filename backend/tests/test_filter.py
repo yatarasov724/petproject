@@ -40,6 +40,29 @@ def test_lkoh():
     assert extract_tickers("Лукойл отчитался за третий квартал") == ["LKOH"]
 
 
+def test_oil_price_news_maps_to_lkoh_rosn():
+    result = extract_tickers("Нефть продолжает дорожать на мировых рынках")
+    assert "LKOH" in result
+    assert "ROSN" in result
+
+
+def test_opec_news_maps_to_lkoh_rosn():
+    result = extract_tickers("Генсек ОПЕК обсудил квоты на добычу")
+    assert "LKOH" in result
+    assert "ROSN" in result
+
+
+def test_gold_price_news_maps_to_plzl():
+    result = extract_tickers("Золото выросло до рекордного уровня")
+    assert "PLZL" in result
+
+
+def test_company_plus_oil_includes_commodity_tickers():
+    result = extract_tickers("Лукойл нарастил добычу нефти в 2025 году")
+    assert "LKOH" in result
+    assert "ROSN" in result  # commodity rule adds ROSN even if not explicitly named
+
+
 def test_multiple_articles_accumulate(db):
     from app.pipeline import clusterer
     from tests.conftest import make_article

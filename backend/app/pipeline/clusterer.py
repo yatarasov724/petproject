@@ -6,59 +6,30 @@ Algorithm
 For each new (non-duplicate) article:
 
   1. Load all "open" clusters from the last CLUSTER_WINDOW_HOURS.
-  2. For every candidate cluster compute:
-       containment = |article_tokens ∩ cluster_tokens| / min(|article_tokens|, |cluster_tokens|)
-  3. Accept a cluster if:
-       containment  >= MATCH_THRESHOLD   (default 0.50)
-       shared_count >= MIN_SHARED_TOKENS (default 2)
-  4. Among accepting clusters pick the one with highest containment.
-  5. If no cluster accepted → create a new cluster from this article (it becomes the anchor).
+  2. Embed the article title with sentence-transformers (paraphrase-multilingual-MiniLM-L12-v2).
+  3. For every candidate cluster:
+     a. If both the article and the cluster have an embedding: cosine similarity.
+     b. Otherwise (missing embedding — existing data or embedder failure): containment fallback.
+  4. Accept a cluster if score >= COSINE_THRESHOLD (embedding) or MATCH_THRESHOLD (containment).
+  5. Among accepting clusters pick the one with the highest score.
+  6. If no cluster accepted → create a new cluster from this article (it becomes the anchor).
 
-Why containment instead of Jaccard?
-────────────────────────────────────
-Jaccard is symmetric and penalises length differences.
-"ЦБ поднял ставку" (3 tokens) vs "Центробанк поднял ключевую ставку до 21%" (5 tokens):
-  Jaccard     = 1/7  ≈ 0.14  → miss
-  Containment = 1/3  ≈ 0.33  → still a miss (same token "ставку" only)
-  … but with better tokenisation of real titles it is more sensitive.
+Embedding fallback
+──────────────────
+The embedder may return None when:
+- sentence-transformers is not installed.
+- The model fails to load (OOM, network error on first download).
+- Runtime exception during encode().
 
-Containment lets a short breaking-news snippet match a longer analytical piece
-on the same event, which Jaccard cannot do at equal thresholds.
-
-Threshold choice (0.50)
-────────────────────────
-0.40 → too many false positives: "Газпром снизил дивиденды" clusters with
-       "Сбербанк снизил дивиденды" (containment 3/4 = 0.75).
-0.50 → same risk when titles are short. Accept it for MVP and document below.
-0.65 → misses most paraphrases. Too strict without stemming.
-
-Known limitations (documented here so the future developer knows what to fix)
-──────────────────────────────────────────────────────────────────────────────
-L1. No stemming: "повысил" and "повышение" are different tokens.
-    Two articles about the same rate hike but using noun vs verb form won't cluster.
-
-L2. No synonym resolution: "ЦБ" ≠ "Центробанк", "доллар" ≠ "USD".
-
-L3. False-positive clusters when different companies perform the same action
-    on the same day ("Газпром снизил дивиденды" + "Сбербанк снизил дивиденды").
-    Mitigation: publisher cooldown still fires UPDATE for subsequent articles
-    in the same cluster, so the second event may be delayed but not lost.
-
-L4. Anchor lock-in: if the first article has a weak title, the cluster
-    may under-match later articles. Fix: expand title_tokens to union
-    (this adds L3 risk). For now, anchor is frozen.
-
-Migration path to smarter clustering
-──────────────────────────────────────
-Replace `_containment()` + threshold check with a vector dot-product
-(using pre-computed embeddings stored as BLOB in event_clusters).
-The rest of the code — cluster lifecycle, DB writes, jobs.py integration — stays the same.
+In all such cases the code silently falls back to containment similarity so the
+pipeline continues to work without embeddings.
 """
 
 import logging
 import sqlite3
 from dataclasses import dataclass
 
+from app.ai import embedder
 from app.ai.filter import extract_tickers
 from app.db import queries
 from app.pipeline.normalizer import RawArticle
@@ -68,8 +39,9 @@ logger = logging.getLogger(__name__)
 # ── configuration ─────────────────────────────────────────────────────────────
 
 CLUSTER_WINDOW_HOURS = 24   # how far back we look for candidate clusters
-MATCH_THRESHOLD      = 0.50 # minimum containment score to join a cluster
-MIN_SHARED_TOKENS    = 2    # minimum overlapping tokens (guards against 1-token matches)
+COSINE_THRESHOLD     = 0.80 # minimum cosine similarity to join a cluster (embedding path)
+MATCH_THRESHOLD      = 0.50 # minimum containment score (fallback path, no embedding)
+MIN_SHARED_TOKENS    = 2    # minimum overlapping tokens (containment fallback guard)
 MAX_KEYWORDS         = 12   # how many tokens to keep in the keywords union
 
 
@@ -79,7 +51,7 @@ MAX_KEYWORDS         = 12   # how many tokens to keep in the keywords union
 class ClusterResult:
     cluster_id: int
     is_new:     bool     # True → this article created the cluster
-    score:      float    # containment score (0.0 for new clusters)
+    score:      float    # cosine or containment score (0.0 for new clusters)
 
 
 # ── public API ────────────────────────────────────────────────────────────────
@@ -110,21 +82,23 @@ def find_or_create(
             len(article_token_set),
             article.title,
         )
-        cluster_id = _create_new_cluster(db, article, market_score, commit=commit)
+        cluster_id = _create_new_cluster(db, article, market_score, embedding=None, commit=commit)
         return ClusterResult(cluster_id=cluster_id, is_new=True, score=0.0)
 
+    article_embedding = _safe_embed(article.title)
+
     candidates = queries.find_candidate_clusters(db, within_hours=CLUSTER_WINDOW_HOURS)
-    best_cluster_id, best_score = _find_best_match(article_token_set, candidates)
+    best_cluster_id, best_score = _find_best_match(article_token_set, article_embedding, candidates)
 
     if best_cluster_id is not None:
         cluster = queries.get_cluster(db, best_cluster_id)
         if cluster is None:
             # Cluster was deleted between find and get (e.g. concurrent cleanup) — treat as new
-            cluster_id = _create_new_cluster(db, article, market_score, commit=commit)
+            cluster_id = _create_new_cluster(db, article, market_score, embedding=article_embedding, commit=commit)
             return ClusterResult(cluster_id=cluster_id, is_new=True, score=0.0)
         _update_existing_cluster(db, cluster, article, article_token_set, market_score, commit=commit)
         logger.debug(
-            "[%s] joined cluster #%d (containment=%.2f): %.60s",
+            "[%s] joined cluster #%d (score=%.2f): %.60s",
             article.source_name,
             best_cluster_id,
             best_score,
@@ -132,7 +106,7 @@ def find_or_create(
         )
         return ClusterResult(cluster_id=best_cluster_id, is_new=False, score=best_score)
 
-    cluster_id = _create_new_cluster(db, article, market_score, commit=commit)
+    cluster_id = _create_new_cluster(db, article, market_score, embedding=article_embedding, commit=commit)
     logger.info(
         "[%s] new cluster #%d: %.60s",
         article.source_name,
@@ -146,27 +120,35 @@ def find_or_create(
 
 def _find_best_match(
     article_tokens: set[str],
+    article_embedding: bytes | None,
     candidates: list[sqlite3.Row],
 ) -> tuple[int | None, float]:
     """
     Scan candidate clusters, return (best_cluster_id, best_score) or (None, 0).
-    Stops early once a perfect match (score=1.0) is found.
+
+    Uses cosine similarity when both sides have an embedding; falls back to
+    token containment otherwise. Stops early once a perfect match (score=1.0) is found.
     """
     best_id    = None
     best_score = 0.0
 
     for cluster in candidates:
-        cluster_tokens = set(cluster["title_tokens"].split())
-        score, shared_count = _containment(article_tokens, cluster_tokens)
+        cluster_emb = cluster["embedding"]
+        if article_embedding is not None and cluster_emb is not None:
+            score     = embedder.cosine(article_embedding, cluster_emb)
+            threshold = COSINE_THRESHOLD
+        else:
+            cluster_tokens = set(cluster["title_tokens"].split())
+            score, shared_count = _containment(article_tokens, cluster_tokens)
+            if shared_count < MIN_SHARED_TOKENS:
+                continue
+            threshold = MATCH_THRESHOLD
 
-        if shared_count < MIN_SHARED_TOKENS:
-            continue
-
-        if score >= MATCH_THRESHOLD and score > best_score:
+        if score >= threshold and score > best_score:
             best_score = score
             best_id    = cluster["id"]
 
-            if best_score == 1.0:
+            if best_score >= 1.0:
                 break   # can't do better
 
     return best_id, best_score
@@ -176,6 +158,7 @@ def _create_new_cluster(
     db: sqlite3.Connection,
     article: RawArticle,
     market_score: int,
+    embedding: bytes | None,
     *,
     commit: bool = True,
 ) -> int:
@@ -188,6 +171,7 @@ def _create_new_cluster(
         keywords=keywords,
         tickers=",".join(tickers),
         score=market_score,
+        embedding=embedding,
         commit=commit,
     )
 
@@ -222,6 +206,15 @@ def _update_existing_cluster(
         merged_tickers=merged_tickers,
         commit=commit,
     )
+
+
+def _safe_embed(text: str) -> bytes | None:
+    """Call embedder.embed(), return None on any failure (missing library, OOM, etc.)."""
+    try:
+        return embedder.embed(text)
+    except Exception as exc:
+        logger.warning("Embedding failed (%s): %.60s", exc, text)
+        return None
 
 
 def _containment(tokens_a: set[str], tokens_b: set[str]) -> tuple[float, int]:

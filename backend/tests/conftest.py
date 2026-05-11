@@ -31,6 +31,18 @@ def _no_real_ai():
     with patch("app.ai.analyzer.analyze", return_value=None):
         yield
 
+
+@pytest.fixture(autouse=True)
+def _no_real_embedder():
+    """
+    Disable sentence-transformers inference in tests.
+
+    Returns None so clusterer falls back to containment similarity.
+    Tests that exercise the embedding path must override this patch explicitly.
+    """
+    with patch("app.ai.embedder.embed", return_value=None):
+        yield
+
 _SCHEMA_PATH = Path(__file__).parent.parent / "app" / "db" / "schema.sql"
 
 

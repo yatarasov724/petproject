@@ -22,7 +22,7 @@ _Обновлено: 2026-05-11_
 | ✅ | Мониторинг / алертинг — heartbeat + silence alerts |
 | ✅ | Источники — 14 активных (цель 15–20 почти достигнута) |
 | ❌ | PostgreSQL вместо SQLite |
-| ❌ | Векторные эмбеддинги (sentence-transformers) вместо containment |
+| ✅ | Векторные эмбеддинги (sentence-transformers) вместо containment |
 
 ## v2 (средний горизонт)
 

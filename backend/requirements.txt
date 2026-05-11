@@ -6,3 +6,4 @@ apscheduler==3.10.4
 pydantic-settings==2.5.2
 pymorphy3==2.0.6
 telethon==1.36.0
+sentence-transformers==3.3.1

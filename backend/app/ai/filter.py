@@ -58,6 +58,15 @@ _TICKER_DIRECT_RE = re.compile(
     r'\b(' + '|'.join(sorted(TICKER_KEYWORDS, key=len, reverse=True)) + r')\b'
 )
 
+# Commodity-level keywords: when oil/OPEC/gold is mentioned without a specific company.
+# Mirrors the rule in the AI prompt: "нефтяные котировки / ОПЕК → LKOH, ROSN"
+_COMMODITY_KEYWORDS: list[tuple[str, list[str]]] = [
+    ("нефт",  ["LKOH", "ROSN"]),  # нефть, нефти, нефтяной, нефтедобыча…
+    ("опек",  ["LKOH", "ROSN"]),  # ОПЕК, ОПЕК+
+    ("opec",  ["LKOH", "ROSN"]),
+    ("золот", ["PLZL"]),           # золото, золотой, золотых
+]
+
 MARKET_KEYWORDS = [
     "акции", "фондовый рынок", "биржа", "moex", "мосбиржа",
     "дивиденды", "чистая прибыль", "выручка", "санкции",
@@ -82,6 +91,9 @@ def extract_tickers(title: str) -> list[str]:
     for ticker, keywords in TICKER_KEYWORDS.items():
         if any(kw in text for kw in keywords):
             found.add(ticker)
+    for stem, tickers in _COMMODITY_KEYWORDS:
+        if stem in text:
+            found.update(tickers)
     return sorted(found)
 
 

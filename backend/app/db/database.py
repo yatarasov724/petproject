@@ -62,3 +62,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
         logger.info("Migration applied: rss_sources.tg_last_msg_id")
     except sqlite3.OperationalError:
         pass
+
+    try:
+        conn.execute("ALTER TABLE event_clusters ADD COLUMN embedding BLOB DEFAULT NULL")
+        conn.commit()
+        logger.info("Migration applied: event_clusters.embedding")
+    except sqlite3.OperationalError:
+        pass

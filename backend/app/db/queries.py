@@ -316,16 +316,17 @@ def create_cluster(
     keywords: str,
     score: int,
     tickers: str = "",
+    embedding: Optional[bytes] = None,
     *,
     commit: bool = True,
 ) -> int:
     cur = db.execute(
         """
         INSERT INTO event_clusters
-            (canonical_title, title_tokens, keywords, best_score, tickers)
-        VALUES (?, ?, ?, ?, ?)
+            (canonical_title, title_tokens, keywords, best_score, tickers, embedding)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (canonical_title, title_tokens, keywords, score, tickers or None),
+        (canonical_title, title_tokens, keywords, score, tickers or None, embedding),
     )
     if commit:
         db.commit()
