@@ -325,6 +325,12 @@ async def _run(db: DBConnection, article: RawArticle) -> ArticleResult:
     # then _ai_enrich() edits the message in place once the LLM responds.
     # Filtering is handled by scorer + is_russia_relevant; AI is now decorative.
     correlations = get_correlations(db, score_result.event_type.value, cluster["tickers"] or "")
+    if correlations:
+        logger.info(
+            "correlations attached cluster_id=%d event_type=%s count=%d",
+            cluster["id"], score_result.event_type.value, len(correlations),
+            extra={"event": "correlations_attached", "cluster_id": cluster["id"]},
+        )
     msg_id = await tg.send(
         db=db,
         cluster=cluster,
