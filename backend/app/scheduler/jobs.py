@@ -263,6 +263,15 @@ async def bot_commands_job() -> None:
         db.close()
 
 
+async def price_snapshot_job() -> None:
+    """Fill in deferred price_1h / price_24h for pending snapshots (hourly)."""
+    from app.pipeline.price_history import update_price_snapshots
+    try:
+        await update_price_snapshots()
+    except Exception:
+        logger.exception("price_snapshot_job crashed")
+
+
 def backup_job() -> None:
     """
     Dump PostgreSQL DB every 6 h via pg_dump. Keeps the last 10 backups.

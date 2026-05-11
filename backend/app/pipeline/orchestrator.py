@@ -42,6 +42,7 @@ from app.db import queries
 from app.db.database import DBConnection
 from app.pipeline import dedup, clusterer, scorer
 from app.pipeline.normalizer import RawArticle
+from app.pipeline.price_history import capture_price_snapshot, get_correlations
 from app.pipeline.publish_decision import decide, Decision, PublishDecision, COOLDOWN_HOURS
 from app.pipeline.relevance import is_russia_relevant
 from app.telegram import client as tg
@@ -323,12 +324,14 @@ async def _run(db: DBConnection, article: RawArticle) -> ArticleResult:
     # Fire-and-forget: publish base message without waiting for AI (~0ms delay),
     # then _ai_enrich() edits the message in place once the LLM responds.
     # Filtering is handled by scorer + is_russia_relevant; AI is now decorative.
+    correlations = get_correlations(db, score_result.event_type.value, cluster["tickers"] or "")
     msg_id = await tg.send(
         db=db,
         cluster=cluster,
         score_result=score_result,
         pub_decision=pub,
         ai_analysis=None,
+        correlations=correlations,
     )
     ok = msg_id is not None
 
@@ -350,11 +353,14 @@ async def _run(db: DBConnection, article: RawArticle) -> ArticleResult:
         )
         if msg_id and settings.openrouter_api_key:
             asyncio.create_task(
-                _ai_enrich(article.title, article.content, cluster, score_result, pub, msg_id)
+                _ai_enrich(article.title, article.content, cluster, score_result, pub, msg_id, correlations)
             )
         if cluster["tickers"]:
             asyncio.create_task(
                 _notify_portfolio(cluster["tickers"], cluster["canonical_title"], cluster["id"])
+            )
+            asyncio.create_task(
+                capture_price_snapshot(cluster["id"], cluster["tickers"], score_result.event_type.value)
             )
 
     outcome = (
@@ -374,6 +380,7 @@ async def _ai_enrich(
     score_result: scorer.ScoreResult,
     pub: PublishDecision,
     message_id: int,
+    correlations: list | None = None,
 ) -> None:
     """
     Background task: call AI, then edit the already-sent Telegram message.
@@ -383,7 +390,7 @@ async def _ai_enrich(
         ai_analysis = await analyzer.analyze(title, content)
         if ai_analysis is None:
             return
-        enriched = format_message(cluster, score_result, pub.decision, ai_analysis)
+        enriched = format_message(cluster, score_result, pub.decision, ai_analysis, correlations=correlations or [])
         await tg.edit_message(message_id, enriched)
         logger.info(
             "AI enrich ok: edited message_id=%d cluster_id=%d",

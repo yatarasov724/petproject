@@ -43,7 +43,7 @@ def mem_db(_init_test_db) -> DBConnection:
     with conn.cursor() as cur:
         cur.execute(
             "TRUNCATE telegram_sends, seen_articles, portfolio_subscriptions, "
-            "event_clusters, rss_sources RESTART IDENTITY"
+            "price_snapshots, event_clusters, rss_sources RESTART IDENTITY"
         )
     conn.commit()
     conn.close()

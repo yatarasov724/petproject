@@ -100,6 +100,7 @@ def format_message(
     score_result: ScoreResult,
     decision: Decision,
     ai_analysis: Optional[AIAnalysis] = None,
+    correlations: Optional[list] = None,
 ) -> str:
     """
     Returns a MarkdownV2-formatted Telegram message.
@@ -152,6 +153,10 @@ def format_message(
         else:
             affects = _AFFECTS.get(score_result.event_type, "акции")
             parts += ["", f"Влияет на: {_esc(affects)}"]
+
+    corr_line = _format_correlations(correlations or [])
+    if corr_line:
+        parts += ["", corr_line]
 
     return "\n".join(parts)
 
@@ -209,6 +214,24 @@ def _format_tickers(tickers: Optional[str]) -> str:
     if not tickers:
         return ""
     return " · ".join(f"${t}" for t in tickers.split(",") if t)
+
+
+def _format_correlations(correlations: list) -> str:
+    """
+    Format historical correlation line, e.g.:
+      📊 По истории: $LKOH -3.2% · $ROSN -2.1% за 24ч (n=6)
+    Returns empty string if no correlations.
+    """
+    if not correlations:
+        return ""
+    shown = correlations[:3]
+    n = max(c.sample_count for c in shown)
+    parts = []
+    for c in shown:
+        val = f"{c.avg_24h_pct:+.1f}%"
+        parts.append(f"${c.ticker} {_esc(val)}")
+    stats = " · ".join(parts)
+    return f"📊 По истории: {stats} за 24ч \\(n\\={n}\\)"
 
 
 def _esc(text: str) -> str:

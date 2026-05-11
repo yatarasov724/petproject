@@ -705,6 +705,115 @@ def clear_user_tickers(db: DBConnection, user_id: int) -> None:
     db.commit()
 
 
+# ── price_snapshots ───────────────────────────────────────────────────────────
+
+def insert_price_snapshot(
+    db: DBConnection,
+    cluster_id: int,
+    ticker: str,
+    event_type: str,
+    published_at: str,
+    price_at_publish: Optional[float],
+) -> None:
+    db.execute(
+        """
+        INSERT INTO price_snapshots
+            (cluster_id, ticker, event_type, published_at, price_at_publish)
+        VALUES (%s, %s, %s, %s, %s)
+        """,
+        (cluster_id, ticker, event_type, published_at, price_at_publish),
+    )
+    db.commit()
+
+
+def get_pending_1h_snapshots(db: DBConnection, limit: int = 20) -> list[Any]:
+    """Snapshots older than 1h that still need price_1h."""
+    cutoff = _iso(datetime.now(timezone.utc) - timedelta(hours=1))
+    return db.execute(
+        """
+        SELECT id, ticker FROM price_snapshots
+        WHERE  price_at_publish IS NOT NULL
+          AND  price_1h IS NULL
+          AND  published_at <= %s
+        LIMIT  %s
+        """,
+        (cutoff, limit),
+    ).fetchall()
+
+
+def get_pending_24h_snapshots(db: DBConnection, limit: int = 20) -> list[Any]:
+    """Snapshots older than 24h that still need price_24h."""
+    cutoff = _iso(datetime.now(timezone.utc) - timedelta(hours=24))
+    return db.execute(
+        """
+        SELECT id, ticker FROM price_snapshots
+        WHERE  price_at_publish IS NOT NULL
+          AND  price_24h IS NULL
+          AND  published_at <= %s
+        LIMIT  %s
+        """,
+        (cutoff, limit),
+    ).fetchall()
+
+
+def update_price_snapshot_1h(
+    db: DBConnection,
+    snapshot_id: int,
+    price: float,
+    timestamp: str,
+) -> None:
+    db.execute(
+        "UPDATE price_snapshots SET price_1h = %s, snapshot_1h_at = %s WHERE id = %s",
+        (price, timestamp, snapshot_id),
+    )
+    db.commit()
+
+
+def update_price_snapshot_24h(
+    db: DBConnection,
+    snapshot_id: int,
+    price: float,
+    timestamp: str,
+) -> None:
+    db.execute(
+        "UPDATE price_snapshots SET price_24h = %s, snapshot_24h_at = %s WHERE id = %s",
+        (price, timestamp, snapshot_id),
+    )
+    db.commit()
+
+
+def get_price_correlations(
+    db: DBConnection,
+    event_type: str,
+    ticker_list: list[str],
+    min_samples: int = 3,
+) -> list[Any]:
+    """
+    Avg 24h price change per ticker for the given event_type.
+    Only returns tickers with >= min_samples completed snapshots.
+    """
+    if not ticker_list:
+        return []
+    placeholders = ",".join(["%s"] * len(ticker_list))
+    return db.execute(
+        f"""
+        SELECT
+            ticker,
+            AVG((price_24h - price_at_publish) / NULLIF(price_at_publish, 0) * 100) AS avg_24h_pct,
+            COUNT(*) AS sample_count
+        FROM   price_snapshots
+        WHERE  event_type = %s
+          AND  ticker IN ({placeholders})
+          AND  price_at_publish > 0
+          AND  price_24h IS NOT NULL
+        GROUP  BY ticker
+        HAVING COUNT(*) >= %s
+        ORDER  BY sample_count DESC
+        """,
+        [event_type, *ticker_list, min_samples],
+    ).fetchall()
+
+
 # ── retention ─────────────────────────────────────────────────────────────────
 
 def run_retention(db: DBConnection) -> None:
@@ -716,6 +825,10 @@ def run_retention(db: DBConnection) -> None:
         db.execute(
             "DELETE FROM event_clusters WHERE first_seen_at < %s",
             (_iso(datetime.now(timezone.utc) - timedelta(days=7)),),
+        )
+        db.execute(
+            "DELETE FROM price_snapshots WHERE created_at < %s",
+            (_iso(datetime.now(timezone.utc) - timedelta(days=90)),),
         )
         # reset backoff entries whose retry window has passed
         db.execute(

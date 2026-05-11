@@ -118,3 +118,26 @@ CREATE TABLE IF NOT EXISTS portfolio_subscriptions (
 
 CREATE INDEX IF NOT EXISTS idx_portfolio_user_id ON portfolio_subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_portfolio_ticker  ON portfolio_subscriptions(ticker);
+
+
+-- ─── price_snapshots ───────────────────────────────────────────────────────────
+-- Records MOEX prices at publish time and 1h/24h later for historical correlation.
+CREATE TABLE IF NOT EXISTS price_snapshots (
+    id               SERIAL PRIMARY KEY,
+    cluster_id       INTEGER NOT NULL REFERENCES event_clusters(id) ON DELETE CASCADE,
+    ticker           TEXT    NOT NULL,
+    event_type       TEXT    NOT NULL,
+    published_at     TEXT    NOT NULL,
+
+    price_at_publish REAL,
+    price_1h         REAL,
+    snapshot_1h_at   TEXT,
+    price_24h        REAL,
+    snapshot_24h_at  TEXT,
+
+    created_at       TEXT    NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+);
+
+CREATE INDEX IF NOT EXISTS idx_price_snap_cluster  ON price_snapshots(cluster_id);
+CREATE INDEX IF NOT EXISTS idx_price_snap_evt_tick ON price_snapshots(event_type, ticker);
+CREATE INDEX IF NOT EXISTS idx_price_snap_pub_at   ON price_snapshots(published_at);

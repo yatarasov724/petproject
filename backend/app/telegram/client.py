@@ -231,6 +231,7 @@ async def send(
     score_result: ScoreResult,
     pub_decision: PublishDecision,
     ai_analysis: Optional[AIAnalysis] = None,
+    correlations: Optional[list] = None,
 ) -> Optional[int]:
     """
     Format and send a message to the Telegram channel.
@@ -246,6 +247,7 @@ async def send(
         score_result=score_result,
         decision=pub_decision.decision,
         ai_analysis=ai_analysis,
+        correlations=correlations or [],
     )
 
     if settings.dry_run:
