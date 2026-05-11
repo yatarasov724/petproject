@@ -21,6 +21,7 @@ import app.core.tg_client as _tg_client
 from app.core.alerting import send_ops as _send_ops
 from app.db.database import get_db
 from app.db import queries
+from app.bot import commands as bot_commands
 from app.pipeline.fetcher import fetch_all
 from app.pipeline.tg_fetcher import fetch_all_tg
 from app.pipeline.orchestrator import process
@@ -242,6 +243,22 @@ async def digest_job(within_hours: int, label: str) -> None:
 
     except Exception:
         logger.exception("digest_job crashed")
+    finally:
+        db.close()
+
+
+async def bot_commands_job() -> None:
+    """
+    Poll for Telegram bot updates and handle commands (every 10 s).
+    Handles /start, /portfolio, /unsubscribe from users in private chats.
+    """
+    db = get_db()
+    try:
+        updates = await tg.get_updates()
+        for update in updates:
+            await bot_commands.handle_update(db, update)
+    except Exception:
+        logger.exception("bot_commands_job crashed")
     finally:
         db.close()
 

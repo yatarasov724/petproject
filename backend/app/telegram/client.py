@@ -34,13 +34,85 @@ logger = logging.getLogger(__name__)
 
 _BASE_URL          = "https://api.telegram.org/bot{token}/sendMessage"
 _EDIT_URL          = "https://api.telegram.org/bot{token}/editMessageText"
+_UPDATES_URL       = "https://api.telegram.org/bot{token}/getUpdates"
 _TIMEOUT           = aiohttp.ClientTimeout(total=10)
 _MAX_RETRIES       = 3
 _RETRY_BASE_S      = 2    # backoff: 2s → 4s → 8s
 _MAX_RETRY_AFTER_S = 30   # cap Retry-After sleep
 
+# Persists across calls within a process lifetime; resets on restart.
+# On restart, Telegram re-delivers unconfirmed updates — /portfolio is idempotent.
+_update_offset: int = 0
+
 
 # ── public API ────────────────────────────────────────────────────────────────
+
+async def get_updates() -> list[dict]:
+    """
+    Fetch pending bot updates via getUpdates (timeout=0, non-blocking).
+    Advances the offset so each update is delivered exactly once per process.
+    Returns an empty list on any error or in DRY_RUN mode.
+    """
+    global _update_offset
+    if settings.dry_run:
+        return []
+
+    url = _UPDATES_URL.format(token=settings.telegram_bot_token)
+    params = {
+        "offset":          _update_offset,
+        "timeout":         0,
+        "allowed_updates": '["message"]',
+    }
+    try:
+        async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+            async with session.get(url, params=params) as resp:
+                if resp.status != 200:
+                    return []
+                body = await resp.json(content_type=None)
+                if not body.get("ok"):
+                    return []
+                updates = body.get("result", [])
+                if updates:
+                    _update_offset = updates[-1]["update_id"] + 1
+                return updates
+    except Exception as exc:
+        logger.warning("get_updates error: %s", exc)
+        return []
+
+
+async def send_dm(user_id: int, text: str) -> bool:
+    """
+    Send a MarkdownV2 message to a specific Telegram user (private DM).
+    Only works if the user has previously started a conversation with the bot.
+    Returns True on success; False on any error.
+    """
+    if settings.dry_run:
+        logger.info("[DRY RUN] send_dm user_id=%d:\n%s", user_id, text)
+        return True
+
+    url = _BASE_URL.format(token=settings.telegram_bot_token)
+    payload = {
+        "chat_id":                  user_id,
+        "text":                     text,
+        "parse_mode":               "MarkdownV2",
+        "disable_web_page_preview": True,
+    }
+    try:
+        async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+            async with session.post(url, json=payload) as resp:
+                body = await resp.json(content_type=None)
+                ok = resp.status == 200 and body.get("ok")
+                if not ok:
+                    logger.warning(
+                        "send_dm failed user_id=%d: %s",
+                        user_id,
+                        body.get("description", ""),
+                    )
+                return bool(ok)
+    except Exception as exc:
+        logger.warning("send_dm error user_id=%d: %s", user_id, exc)
+        return False
+
 
 async def edit_message(message_id: int, text: str) -> bool:
     """

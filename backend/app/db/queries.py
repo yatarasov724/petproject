@@ -617,6 +617,51 @@ def reset_source_backoff(db: sqlite3.Connection, source_id: int) -> bool:
     return cur.rowcount > 0
 
 
+# ── portfolio_subscriptions ───────────────────────────────────────────────────
+
+def get_subscribed_users(db: sqlite3.Connection, tickers: list[str]) -> list[int]:
+    """Return user_ids subscribed to any of the given tickers."""
+    if not tickers:
+        return []
+    placeholders = ",".join("?" * len(tickers))
+    rows = db.execute(
+        f"SELECT DISTINCT user_id FROM portfolio_subscriptions WHERE ticker IN ({placeholders})",
+        tickers,
+    ).fetchall()
+    return [r["user_id"] for r in rows]
+
+
+def get_user_tickers(db: sqlite3.Connection, user_id: int) -> list[str]:
+    """Return tickers subscribed by a user, sorted alphabetically."""
+    rows = db.execute(
+        "SELECT ticker FROM portfolio_subscriptions WHERE user_id = ? ORDER BY ticker",
+        (user_id,),
+    ).fetchall()
+    return [r["ticker"] for r in rows]
+
+
+def set_user_tickers(db: sqlite3.Connection, user_id: int, tickers: list[str]) -> None:
+    """Replace a user's subscriptions with the given tickers (idempotent)."""
+    with db:
+        db.execute(
+            "DELETE FROM portfolio_subscriptions WHERE user_id = ?",
+            (user_id,),
+        )
+        db.executemany(
+            "INSERT OR IGNORE INTO portfolio_subscriptions (user_id, ticker) VALUES (?, ?)",
+            [(user_id, t.upper()) for t in tickers],
+        )
+
+
+def clear_user_tickers(db: sqlite3.Connection, user_id: int) -> None:
+    """Remove all subscriptions for a user."""
+    db.execute(
+        "DELETE FROM portfolio_subscriptions WHERE user_id = ?",
+        (user_id,),
+    )
+    db.commit()
+
+
 # ── retention ─────────────────────────────────────────────────────────────────
 
 def run_retention(db: sqlite3.Connection) -> None:

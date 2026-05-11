@@ -35,6 +35,7 @@ from datetime import datetime, timezone, timedelta
 from enum import Enum
 
 from app.ai import analyzer
+from app.bot.portfolio import notify as _notify_portfolio
 from app.core import metrics
 from app.core.config import settings
 from app.db import queries
@@ -323,6 +324,10 @@ async def _run(db: sqlite3.Connection, article: RawArticle) -> ArticleResult:
         if msg_id and settings.openrouter_api_key:
             asyncio.create_task(
                 _ai_enrich(article.title, article.content, cluster, score_result, pub, msg_id)
+            )
+        if cluster["tickers"]:
+            asyncio.create_task(
+                _notify_portfolio(cluster["tickers"], cluster["canonical_title"], cluster["id"])
             )
 
     outcome = (

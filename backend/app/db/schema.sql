@@ -101,3 +101,16 @@ CREATE TABLE IF NOT EXISTS telegram_sends (
 
 CREATE INDEX IF NOT EXISTS idx_sends_sent_at    ON telegram_sends(sent_at);
 CREATE INDEX IF NOT EXISTS idx_sends_cluster_id ON telegram_sends(cluster_id);
+
+
+-- ─── portfolio_subscriptions ───────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS portfolio_subscriptions (
+    id         INTEGER PRIMARY KEY,
+    user_id    INTEGER NOT NULL,
+    ticker     TEXT    NOT NULL,
+    created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    UNIQUE(user_id, ticker)
+);
+
+CREATE INDEX IF NOT EXISTS idx_portfolio_user_id ON portfolio_subscriptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_portfolio_ticker  ON portfolio_subscriptions(ticker);

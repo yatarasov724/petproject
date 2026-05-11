@@ -10,7 +10,7 @@ from functools import partial
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.scheduler.jobs import poll_job, cleanup_job, backup_job, heartbeat_job, digest_job
+from app.scheduler.jobs import poll_job, cleanup_job, backup_job, heartbeat_job, digest_job, bot_commands_job
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +58,16 @@ def start() -> None:
         max_instances=1,
         coalesce=True,
     )
+    _scheduler.add_job(
+        bot_commands_job,
+        trigger="interval",
+        seconds=10,
+        id="bot_commands",
+        max_instances=1,
+        coalesce=True,
+    )
     _scheduler.start()
-    logger.info("Scheduler started (poll=60s, cleanup=24h, backup=6h, heartbeat=5m, digest=22:00 MSK)")
+    logger.info("Scheduler started (poll=60s, cleanup=24h, backup=6h, heartbeat=5m, digest=22:00 MSK, bot=10s)")
 
 
 def stop() -> None:
