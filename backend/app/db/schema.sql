@@ -67,6 +67,10 @@ CREATE INDEX IF NOT EXISTS idx_clusters_status          ON event_clusters(status
 CREATE INDEX IF NOT EXISTS idx_clusters_last_updated_at ON event_clusters(last_updated_at);
 
 
+-- ─── pg_trgm extension (required for GIN trigram index on title_tokens) ────────
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+
 -- ─── seen_articles ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS seen_articles (
     id          SERIAL  PRIMARY KEY,
@@ -85,6 +89,8 @@ CREATE TABLE IF NOT EXISTS seen_articles (
 CREATE INDEX IF NOT EXISTS idx_seen_raw_hash   ON seen_articles(raw_hash);
 CREATE INDEX IF NOT EXISTS idx_seen_seen_at    ON seen_articles(seen_at);
 CREATE INDEX IF NOT EXISTS idx_seen_cluster_id ON seen_articles(cluster_id);
+-- GIN trigram index for near-dedup candidate pre-filtering (replaces O(N) Python scan)
+CREATE INDEX IF NOT EXISTS idx_seen_title_trgm ON seen_articles USING GIN (title_tokens gin_trgm_ops);
 
 
 -- ─── telegram_sends ────────────────────────────────────────────────────────────

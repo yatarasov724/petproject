@@ -59,9 +59,9 @@ from app.pipeline.normalizer import RawArticle
 logger = logging.getLogger(__name__)
 
 # Near-dedup configuration
-JACCARD_THRESHOLD       = 0.35
-NEAR_DEDUP_WINDOW_HOURS = 4     # only compare against articles seen in this window
-NEAR_DEDUP_MAX_POOL     = 1000  # max rows loaded for Jaccard comparison (caps O(N) scan)
+JACCARD_THRESHOLD        = 0.35
+NEAR_DEDUP_WINDOW_HOURS  = 4   # only compare against articles seen in this window
+NEAR_DEDUP_CANDIDATES    = 50  # max candidates returned by pg_trgm pre-filter
 
 # Containment-based near-dedup (Stage 2b) — catches length-asymmetric duplicates
 CONTAINMENT_THRESHOLD   = 0.65  # fraction of the shorter title's tokens that must appear in the longer
@@ -100,9 +100,11 @@ def check(db: DBConnection, article: RawArticle) -> DedupResult:
         )
         return DedupResult(is_duplicate=True, reason=DupReason.EXACT, score=0.0)
 
-    # Stage 2: near (Jaccard)
-    recent_tokens = queries.get_recent_title_tokens(
-        db, within_hours=NEAR_DEDUP_WINDOW_HOURS, limit=NEAR_DEDUP_MAX_POOL
+    # Stage 2: near (Jaccard) — pg_trgm pre-filter returns ≤ NEAR_DEDUP_CANDIDATES rows
+    recent_tokens = queries.get_near_dup_candidates(
+        db, article.title_tokens,
+        within_hours=NEAR_DEDUP_WINDOW_HOURS,
+        limit=NEAR_DEDUP_CANDIDATES,
     )
     best_jaccard, _ = _best_jaccard(article.title_tokens, recent_tokens)
 

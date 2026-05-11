@@ -239,6 +239,41 @@ def get_recent_title_tokens(
     return [r["title_tokens"] for r in rows]
 
 
+def get_near_dup_candidates(
+    db: DBConnection,
+    candidate_tokens: str,
+    within_hours: int = 4,
+    limit: int = 50,
+) -> list[str]:
+    """
+    Use the pg_trgm GIN index on title_tokens to find trigram-similar rows
+    within the time window. Returns at most `limit` token strings, ordered by
+    similarity descending.
+
+    The threshold (0.15) is intentionally lower than our Jaccard threshold (0.35)
+    to avoid false negatives: token strings that share 35%+ of their word-set
+    may have lower character-trigram overlap when tokens are short or inflected.
+    The exact Jaccard/containment check in Python filters the small result set.
+
+    The `%%` operator uses the GIN index; `SET LOCAL` scopes the threshold to
+    the current transaction only.
+    """
+    cutoff = _iso(datetime.now(timezone.utc) - timedelta(hours=within_hours))
+    db.execute("SET LOCAL pg_trgm.similarity_threshold = 0.15")
+    rows = db.execute(
+        """
+        SELECT title_tokens
+        FROM   seen_articles
+        WHERE  seen_at >= %s
+          AND  title_tokens %% %s
+        ORDER  BY similarity(title_tokens, %s) DESC
+        LIMIT  %s
+        """,
+        (cutoff, candidate_tokens, candidate_tokens, limit),
+    ).fetchall()
+    return [r["title_tokens"] for r in rows]
+
+
 def insert_seen_article(
     db: DBConnection,
     source_id: int,

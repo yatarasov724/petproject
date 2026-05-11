@@ -13,7 +13,7 @@ import time
 import pytest
 
 from app.pipeline import dedup
-from app.pipeline.dedup import DupReason, jaccard, containment, NEAR_DEDUP_MAX_POOL
+from app.pipeline.dedup import DupReason, jaccard, containment, NEAR_DEDUP_CANDIDATES
 from app.db import queries
 from tests.conftest import make_article, db  # noqa: F401
 
@@ -225,54 +225,16 @@ def _insert_bulk_seen_articles(db, count: int) -> None:
     db.commit()
 
 
-class TestNearDedupLimit:
-    def test_limit_applied_to_pool(self, db):
-        """get_recent_title_tokens must return at most NEAR_DEDUP_MAX_POOL rows."""
-        _insert_bulk_seen_articles(db, NEAR_DEDUP_MAX_POOL + 500)
-
-        pool = queries.get_recent_title_tokens(db, within_hours=48)
-        assert len(pool) <= NEAR_DEDUP_MAX_POOL
-
-    def test_near_dedup_still_catches_duplicate_within_limit(self, db):
-        """Even with a large pool, a near-duplicate that falls within the limit is caught."""
-        # Insert enough filler articles to push pool near the limit
-        _insert_bulk_seen_articles(db, 100)
-
-        # Insert the article we want to detect as a near-dup
-        anchor = make_article(
-            title="ЦБ повысил ключевую ставку до 21 процента",
-            raw_hash="limit_anchor_001",
+class TestNearDedupIndex:
+    def test_trgm_index_exists(self, db):
+        """Schema must define a GIN trigram index on seen_articles.title_tokens."""
+        rows = db.execute(
+            "SELECT indexname FROM pg_indexes WHERE tablename = 'seen_articles'"
+        ).fetchall()
+        indexes = {row["indexname"] for row in rows}
+        assert any("trgm" in idx for idx in indexes), (
+            f"Expected a trigram index on title_tokens, found: {indexes}"
         )
-        dedup.record(db, anchor)
-
-        candidate = make_article(
-            title="Банк России поднял ключевую ставку до 21 процента",
-            raw_hash="limit_candidate_001",
-        )
-        result = dedup.check(db, candidate)
-        assert result.is_duplicate
-        assert result.reason == DupReason.NEAR
-
-    def test_most_recent_articles_prioritised(self, db):
-        """
-        ORDER BY seen_at DESC means the most recent articles fill the pool first.
-        An anchor inserted last should be found even when older rows exceed the limit.
-        """
-        _insert_bulk_seen_articles(db, NEAR_DEDUP_MAX_POOL - 10)
-
-        # This anchor is inserted after the bulk rows → it appears first in DESC order
-        anchor = make_article(
-            title="ЦБ повысил ключевую ставку до 21 процента",
-            raw_hash="recent_anchor_001",
-        )
-        dedup.record(db, anchor)
-
-        candidate = make_article(
-            title="Банк России поднял ключевую ставку до 21 процента",
-            raw_hash="recent_candidate_001",
-        )
-        result = dedup.check(db, candidate)
-        assert result.is_duplicate
 
     def test_index_exists_on_seen_at(self, db):
         """Schema must define an index on seen_articles(seen_at)."""
@@ -284,9 +246,58 @@ class TestNearDedupLimit:
             f"Expected an index on seen_at, found: {indexes}"
         )
 
+    def test_candidates_limit_respected(self, db):
+        """get_near_dup_candidates returns at most NEAR_DEDUP_CANDIDATES rows."""
+        # Insert many articles with a common token so they all qualify as candidates
+        now = "2026-05-05T21:00:00Z"
+        db.executemany(
+            """
+            INSERT INTO seen_articles
+                (source_id, raw_hash, title_tokens, url, published_at, seen_at)
+            VALUES (1, %s, %s, NULL, %s, %s)
+            ON CONFLICT (raw_hash) DO NOTHING
+            """,
+            [(f"cand_hash_{i}", f"санкции газпром вариант{i}", now, now)
+             for i in range(NEAR_DEDUP_CANDIDATES + 20)],
+        )
+        db.commit()
+
+        candidates = queries.get_near_dup_candidates(
+            db, "санкции газпром нефть", within_hours=48, limit=NEAR_DEDUP_CANDIDATES
+        )
+        assert len(candidates) <= NEAR_DEDUP_CANDIDATES
+
+    def test_unrelated_articles_excluded(self, db):
+        """Articles with no token overlap don't appear in candidates."""
+        _insert_bulk_seen_articles(db, 50)  # "токенN общий рынок"
+
+        candidates = queries.get_near_dup_candidates(
+            db, "санкции газпром нефть ставк", within_hours=48
+        )
+        for tokens in candidates:
+            assert "общий" not in tokens or "санкции" in tokens
+
+    def test_near_dedup_catches_duplicate_amid_filler(self, db):
+        """pg_trgm pre-filter finds a near-dup anchor among 100 unrelated articles."""
+        _insert_bulk_seen_articles(db, 100)
+
+        anchor = make_article(
+            title="ЦБ повысил ключевую ставку до 21 процента",
+            raw_hash="trgm_anchor_001",
+        )
+        dedup.record(db, anchor)
+
+        candidate = make_article(
+            title="Банк России поднял ключевую ставку до 21 процента",
+            raw_hash="trgm_candidate_001",
+        )
+        result = dedup.check(db, candidate)
+        assert result.is_duplicate
+        assert result.reason == DupReason.NEAR
+
     def test_near_dedup_performance(self, db):
-        """1000-row pool: a full dedup.check() must complete in under 500 ms."""
-        _insert_bulk_seen_articles(db, NEAR_DEDUP_MAX_POOL)
+        """1000-row pool: dedup.check() must complete in under 500 ms."""
+        _insert_bulk_seen_articles(db, 1000)
 
         candidate = make_article(
             title="Газпром объявил дивиденды за рекордный год",
