@@ -11,20 +11,17 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-cache the embedding model so deploys don't re-download 120 MB at runtime
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')"
+
 # Copy application source
 COPY app/ ./app/
-
-# SQLite data lives outside the image so it survives container rebuilds.
-# Mount a host directory or named volume to /data at runtime.
-RUN mkdir -p /data
 
 # Structured JSON logs by default in Docker (parse with any log aggregator)
 ENV LOG_FORMAT=json
 ENV LOG_LEVEL=INFO
-ENV DATABASE_URL=sqlite:////data/moex_assistant.db
 
 EXPOSE 8000
 
-# Single worker: multiple workers don't share in-memory metrics and SQLite
-# WAL handles concurrent reads fine with a single writer process.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+# PORT is injected by Railway (and most other PaaS). Falls back to 8000 locally.
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
