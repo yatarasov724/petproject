@@ -37,5 +37,7 @@ async def send_ops(text: str) -> None:
                     logger.warning(
                         "ops alert failed: HTTP %d — %s", resp.status, body[:120]
                     )
-    except Exception as exc:
+    except BaseException as exc:
+        # CancelledError is BaseException in Python 3.11+, not Exception.
+        # Alerting must never raise — swallow everything including cancellations.
         logger.warning("ops alert dropped: %s", exc, exc_info=True)

@@ -18,6 +18,8 @@ import json
 import logging
 import sys
 from datetime import datetime, timezone
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 
 # Fields that are part of LogRecord but not useful as structured data
@@ -56,6 +58,9 @@ class _TextFormatter(logging.Formatter):
         )
 
 
+_LOG_FILE = Path(__file__).resolve().parents[2] / "logs" / "app.log"
+
+
 def configure(json_logs: bool = False, level: str = "INFO") -> None:
     """
     Call once at startup, before any logger.* calls.
@@ -63,12 +68,28 @@ def configure(json_logs: bool = False, level: str = "INFO") -> None:
     """
     formatter = _JsonFormatter() if json_logs else _TextFormatter()
 
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(formatter)
-
     root = logging.getLogger()
     root.handlers.clear()
-    root.addHandler(handler)
+
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler.setFormatter(formatter)
+    root.addHandler(stdout_handler)
+
+    # Always write to logs/app.log regardless of how stdout is redirected.
+    try:
+        _LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = RotatingFileHandler(
+            _LOG_FILE,
+            maxBytes=10 * 1024 * 1024,  # 10 MB
+            backupCount=5,
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(formatter)
+        root.addHandler(file_handler)
+    except OSError as exc:
+        # Non-fatal — continue without file logging if the path isn't writable.
+        sys.stderr.write(f"[logging_setup] could not open log file {_LOG_FILE}: {exc}\n")
+
     root.setLevel(getattr(logging, level.upper(), logging.INFO))
 
     # Third-party noise reduction

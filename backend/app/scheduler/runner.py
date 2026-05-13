@@ -46,6 +46,7 @@ def start() -> None:
         minutes=5,
         id="heartbeat",
         max_instances=1,
+        misfire_grace_time=None,  # always run even if delayed by a slow poll cycle
     )
     # Daily digest at 22:00 MSK (19:00 UTC) — top-10 events of the full day
     _scheduler.add_job(

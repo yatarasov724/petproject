@@ -12,6 +12,7 @@ Each job:
   - closes the connection in finally
 """
 
+import asyncio
 import logging
 from collections import Counter
 from datetime import datetime, timezone
@@ -56,14 +57,25 @@ async def poll_job() -> None:
 
         tg_client = _tg_client.get()
         if tg_client is not None:
-            tg_articles = await fetch_all_tg(db, tg_client)
+            try:
+                tg_articles = await asyncio.wait_for(fetch_all_tg(db, tg_client), timeout=55)
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "TG fetch timed out after 55s — skipping this cycle",
+                    extra={"event": "tg_fetch_timeout"},
+                )
+                tg_articles = []
             metrics.inc(metrics.ARTICLES_FETCHED, len(tg_articles))
             articles.extend(tg_articles)
 
         counts: Counter[str] = Counter()
-        for article in articles:
+        for i, article in enumerate(articles):
             result = await process(db, article)
             counts[result.outcome.value] += 1
+            # Yield to the event loop every 50 articles so heartbeat and other
+            # jobs are not starved while processing large batches.
+            if i % 10 == 9:
+                await asyncio.sleep(0)
 
         # Dump per-poll stats alongside process-lifetime totals
         poll_stats = dict(counts)
