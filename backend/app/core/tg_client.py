@@ -84,7 +84,15 @@ async def connect() -> Optional[TelegramClient]:
 
     # ── connect using the file session ────────────────────────────────────────
     client = TelegramClient(str(SESSION_FILE), api_id, api_hash)
-    await client.connect()  # type: ignore[misc]
+    try:
+        await client.connect()  # type: ignore[misc]
+    except Exception as exc:
+        logger.error(
+            "Telethon: connect failed (%s) — delete %s and run: python generate_session.py",
+            exc, session_path,
+        )
+        await client.disconnect()  # type: ignore[misc]
+        return None
 
     if not await client.is_user_authorized():  # type: ignore[misc]
         logger.error(

@@ -38,9 +38,8 @@ _RSS_SEEDS = [
 
     # ── tier 4: market community + official policy ────────────────────────────
     ("Smartlab",   "https://smart-lab.ru/news/rss"),          # retail trader news/market events
-    ("Government", "http://government.ru/news/rss/"),          # official economic policy decisions
-
     # ── disabled (unreachable as of 2026-05) ─────────────────────────────────
+    # ("Government", "http://government.ru/news/rss/"),  # blocks VPS IP
     # ("RBC",     "https://rbc.ru/rss/news"),           # 404
     # ("Forbes",  "https://www.forbes.ru/rss"),         # 400
     # ("Finam",   "https://www.finam.ru/..."),          # 403
@@ -740,6 +739,48 @@ def clear_user_tickers(db: DBConnection, user_id: int) -> None:
     db.commit()
 
 
+# ── users ─────────────────────────────────────────────────────────────────────
+
+def upsert_user(
+    db: DBConnection,
+    telegram_id: int,
+    username: Optional[str],
+    first_name: str,
+) -> str:
+    """Register or update a user. Returns the user's current plan ('free'/'pro')."""
+    cur = db.execute(
+        """
+        INSERT INTO users (telegram_id, username, first_name)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (telegram_id) DO UPDATE
+            SET username   = EXCLUDED.username,
+                first_name = EXCLUDED.first_name
+        RETURNING plan
+        """,
+        (telegram_id, username, first_name),
+    )
+    db.commit()
+    row = cur.fetchone()
+    assert row is not None
+    return row["plan"]
+
+
+def get_user(db: DBConnection, telegram_id: int) -> Optional[Any]:
+    return db.execute(
+        "SELECT * FROM users WHERE telegram_id = %s",
+        (telegram_id,),
+    ).fetchone()
+
+
+def get_user_plan(db: DBConnection, telegram_id: int) -> str:
+    """Return the user's plan, defaulting to 'free' if the user is not yet registered."""
+    row = db.execute(
+        "SELECT plan FROM users WHERE telegram_id = %s",
+        (telegram_id,),
+    ).fetchone()
+    return row["plan"] if row else "free"
+
+
 # ── price_snapshots ───────────────────────────────────────────────────────────
 
 def insert_price_snapshot(
@@ -847,6 +888,171 @@ def get_price_correlations(
         """,
         [event_type, *ticker_list, min_samples],
     ).fetchall()
+
+
+# ── user_settings ─────────────────────────────────────────────────────────────
+
+_SETTINGS_DEFAULTS: dict = {"min_score": 30, "quiet_from": None, "quiet_to": None}
+
+
+def get_user_settings(db: DBConnection, user_id: int) -> Any:
+    """Return the user_settings row by internal users.id, or defaults if none."""
+    row = db.execute(
+        "SELECT * FROM user_settings WHERE user_id = %s",
+        (user_id,),
+    ).fetchone()
+    return row if row is not None else _SETTINGS_DEFAULTS
+
+
+def get_user_settings_by_telegram_id(db: DBConnection, telegram_id: int) -> Any:
+    """Return the user_settings row by telegram_id (JOIN through users), or defaults."""
+    row = db.execute(
+        """
+        SELECT us.*
+        FROM   user_settings us
+        JOIN   users u ON u.id = us.user_id
+        WHERE  u.telegram_id = %s
+        """,
+        (telegram_id,),
+    ).fetchone()
+    return row if row is not None else _SETTINGS_DEFAULTS
+
+
+def save_user_settings(
+    db: DBConnection,
+    user_id: int,
+    *,
+    min_score: int = 30,
+    quiet_from: Optional[int] = None,
+    quiet_to: Optional[int] = None,
+) -> None:
+    """Upsert all settings fields for the user."""
+    db.execute(
+        """
+        INSERT INTO user_settings (user_id, min_score, quiet_from, quiet_to, updated_at)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (user_id) DO UPDATE
+            SET min_score  = EXCLUDED.min_score,
+                quiet_from = EXCLUDED.quiet_from,
+                quiet_to   = EXCLUDED.quiet_to,
+                updated_at = EXCLUDED.updated_at
+        """,
+        (user_id, min_score, quiet_from, quiet_to, _utcnow_iso()),
+    )
+    db.commit()
+
+
+def is_quiet_hour(quiet_from: Optional[int], quiet_to: Optional[int], hour: int) -> bool:
+    """Return True if the given UTC hour falls within the configured quiet window.
+
+    Handles midnight-crossing ranges: quiet_from=23, quiet_to=8 means 23:xx–07:xx.
+    """
+    if quiet_from is None or quiet_to is None:
+        return False
+    if quiet_from < quiet_to:
+        return quiet_from <= hour < quiet_to
+    return hour >= quiet_from or hour < quiet_to
+
+
+# ── subscriptions ─────────────────────────────────────────────────────────────
+
+_GRACE_DAYS = 3
+
+
+def create_subscription(
+    db: DBConnection,
+    telegram_id: int,
+    plan: str,
+    expires_at: str,
+    payment_id: Optional[str] = None,
+) -> int:
+    """Create a new subscription and set users.plan='pro'. Returns subscription id."""
+    user = get_user(db, telegram_id)
+    if user is None:
+        raise ValueError(f"User telegram_id={telegram_id} not found")
+    cur = db.execute(
+        """
+        INSERT INTO subscriptions (user_id, plan, expires_at, payment_id)
+        VALUES (%s, %s, %s, %s)
+        RETURNING id
+        """,
+        (user["id"], plan, expires_at, payment_id),
+    )
+    sub_id = cur.fetchone()["id"]
+    db.execute("UPDATE users SET plan = 'pro' WHERE id = %s", (user["id"],))
+    db.commit()
+    return sub_id
+
+
+def get_active_subscription(db: DBConnection, telegram_id: int) -> Optional[Any]:
+    """Return the most recent active or grace subscription, or None."""
+    return db.execute(
+        """
+        SELECT s.*
+        FROM   subscriptions s
+        JOIN   users u ON s.user_id = u.id
+        WHERE  u.telegram_id = %s
+          AND  s.status IN ('active', 'grace')
+        ORDER  BY s.created_at DESC
+        LIMIT  1
+        """,
+        (telegram_id,),
+    ).fetchone()
+
+
+def get_expiring_subscriptions(db: DBConnection, within_days: int = 3) -> list[Any]:
+    """Return active subscriptions expiring within the given window (for reminders)."""
+    now = _utcnow_iso()
+    cutoff = _iso(datetime.now(timezone.utc) + timedelta(days=within_days))
+    return db.execute(
+        """
+        SELECT s.id, s.plan, s.expires_at, u.telegram_id
+        FROM   subscriptions s
+        JOIN   users u ON s.user_id = u.id
+        WHERE  s.status = 'active'
+          AND  s.expires_at > %s
+          AND  s.expires_at <= %s
+        """,
+        (now, cutoff),
+    ).fetchall()
+
+
+def expire_subscriptions(db: DBConnection) -> tuple[int, int]:
+    """
+    Advance subscription lifecycle:
+      active → grace  when expires_at < now
+      grace  → expired when expires_at < now - GRACE_DAYS, also sets users.plan = 'free'
+    Returns (graced_count, expired_count).
+    """
+    now = _utcnow_iso()
+    grace_cutoff = _iso(datetime.now(timezone.utc) - timedelta(days=_GRACE_DAYS))
+
+    cur = db.execute(
+        "UPDATE subscriptions SET status = 'grace' WHERE status = 'active' AND expires_at < %s",
+        (now,),
+    )
+    graced = cur.rowcount
+
+    cur = db.execute(
+        """
+        UPDATE subscriptions SET status = 'expired'
+        WHERE  status = 'grace' AND expires_at < %s
+        RETURNING user_id
+        """,
+        (grace_cutoff,),
+    )
+    expired_user_ids = [r["user_id"] for r in cur.fetchall()]
+
+    for uid in expired_user_ids:
+        still_active = db.execute(
+            "SELECT 1 FROM subscriptions WHERE user_id = %s AND status IN ('active','grace') LIMIT 1",
+            (uid,),
+        ).fetchone()
+        if not still_active:
+            db.execute("UPDATE users SET plan = 'free' WHERE id = %s", (uid,))
+
+    db.commit()
+    return graced, len(expired_user_ids)
 
 
 # ── retention ─────────────────────────────────────────────────────────────────
