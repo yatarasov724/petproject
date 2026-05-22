@@ -56,8 +56,7 @@ _TG_SEEDS = [
     ("TG:russianmacro",   "tg://russianmacro"),   # macro & CBR
     ("TG:cbrstocks",      "tg://cbrstocks"),       # CBR/stocks news
     ("TG:moexnews",       "tg://moexnews"),        # official MOEX channel
-    ("TG:dohod_official", "tg://dohod_official"), # ДОХОД — дивиденды и рейтинги
-    ("TG:stocktoday",     "tg://stocktoday"),      # торговый flow
+    ("TG:dohod",          "tg://dohod"),            # ДОХОДЪ — дивиденды и рейтинги
 ]
 
 _BACKOFF_MAX_MINUTES = 120
