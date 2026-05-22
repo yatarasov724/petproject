@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     # Useful to verify ingestion/clustering/scoring without hitting the channel.
     dry_run:       bool = False
 
+    # "development" → prepends [DEV] to every channel message
+    # "production"  → messages sent as-is
+    environment:   str  = "production"
+
     # ── ops / monitoring ──────────────────────────────────────────────────────
     # If set, heartbeat and dead-source alerts are sent to this chat/channel.
     # Leave empty to disable all ops alerting.

@@ -2,6 +2,12 @@ import aiohttp
 import logging
 from app.core.config import settings
 
+
+def _apply_env_prefix(text: str) -> str:
+    if settings.environment == "development":
+        return "🛠 *DEV*\n" + text
+    return text
+
 logger = logging.getLogger(__name__)
 
 SOURCE_NAMES = {
@@ -18,6 +24,7 @@ async def send_news(title: str, source: str, url: str):
     text = f"*{source_ru}*\n{title}"
     if url:
         text += f"\n[Читать далее]({url})"
+    text = _apply_env_prefix(text)
 
     url_api = f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage"
     payload = {

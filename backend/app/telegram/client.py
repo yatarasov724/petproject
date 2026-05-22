@@ -155,14 +155,23 @@ async def edit_dm(
         return False
 
 
-async def answer_callback_query(callback_query_id: str, text: str = "") -> None:
-    """Acknowledge a button press to dismiss the loading spinner."""
+async def answer_callback_query(
+    callback_query_id: str,
+    text: str = "",
+    show_alert: bool = False,
+) -> None:
+    """Acknowledge a button press. Set show_alert=True to display a popup instead of a toast."""
     if settings.dry_run:
         return
     url = _ANSWER_CBQ_URL.format(token=settings.telegram_bot_token)
+    payload: dict = {"callback_query_id": callback_query_id}
+    if text:
+        payload["text"] = text
+    if show_alert:
+        payload["show_alert"] = True
     try:
         async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
-            await session.post(url, json={"callback_query_id": callback_query_id, "text": text})
+            await session.post(url, json=payload)
     except Exception as exc:
         logger.warning("answer_callback_query error: %s", exc)
 
@@ -180,7 +189,7 @@ async def edit_message(message_id: int, text: str) -> bool:
     payload = {
         "chat_id":                  settings.telegram_channel_id,
         "message_id":               message_id,
-        "text":                     text,
+        "text":                     _apply_env_prefix(text),
         "parse_mode":               "MarkdownV2",
         "disable_web_page_preview": True,
     }
@@ -338,6 +347,12 @@ async def send(
 
 # ── internals ─────────────────────────────────────────────────────────────────
 
+def _apply_env_prefix(text: str) -> str:
+    if settings.environment == "development":
+        return "\\[DEV\\]\n" + text
+    return text
+
+
 async def _send_with_retry(text: str) -> tuple[Optional[int], Optional[str]]:
     """
     Attempt to send up to _MAX_RETRIES times.
@@ -346,7 +361,7 @@ async def _send_with_retry(text: str) -> tuple[Optional[int], Optional[str]]:
     url     = _BASE_URL.format(token=settings.telegram_bot_token)
     payload = {
         "chat_id":                  settings.telegram_channel_id,
-        "text":                     text,
+        "text":                     _apply_env_prefix(text),
         "parse_mode":               "MarkdownV2",
         "disable_web_page_preview": True,
     }

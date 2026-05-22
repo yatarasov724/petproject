@@ -38,19 +38,26 @@ _RSS_SEEDS = [
 
     # ── tier 4: market community + official policy ────────────────────────────
     ("Smartlab",   "https://smart-lab.ru/news/rss"),          # retail trader news/market events
+
+    # ── tier 5: stock market focused ─────────────────────────────────────────
+    ("RBC",        "https://rssexport.rbc.ru/rbcnews/news/30/full.rss"),  # РБК финансы
+
     # ── disabled (unreachable as of 2026-05) ─────────────────────────────────
-    # ("Government", "http://government.ru/news/rss/"),  # blocks VPS IP
-    # ("RBC",     "https://rbc.ru/rss/news"),           # 404
-    # ("Forbes",  "https://www.forbes.ru/rss"),         # 400
-    # ("Finam",   "https://www.finam.ru/..."),          # 403
-    # ("CBR",     "https://www.cbr.ru/rss/"),           # 404
+    # ("Government",  "http://government.ru/news/rss/"),  # blocks VPS IP
+    # ("Forbes",      "https://www.forbes.ru/rss"),       # 400
+    # ("Finam",       "https://www.finam.ru/..."),        # 403
+    # ("CBR",         "https://www.cbr.ru/rss/"),         # 404
+    # ("BCS",         "https://bcs-express.ru/rss"),      # 403
+    # ("InvestFunds", "https://investfunds.ru/news/rss/"),# 404
 ]
 
 _TG_SEEDS = [
-    ("TG:markettwits",   "tg://markettwits"),    # market commentary, popular
-    ("TG:russianmacro",  "tg://russianmacro"),   # macro & CBR
-    ("TG:cbrstocks",     "tg://cbrstocks"),       # CBR/stocks news
-    ("TG:moexnews",      "tg://moexnews"),        # official MOEX channel
+    ("TG:markettwits",    "tg://markettwits"),    # market commentary, popular
+    ("TG:russianmacro",   "tg://russianmacro"),   # macro & CBR
+    ("TG:cbrstocks",      "tg://cbrstocks"),       # CBR/stocks news
+    ("TG:moexnews",       "tg://moexnews"),        # official MOEX channel
+    ("TG:dohod_official", "tg://dohod_official"), # ДОХОД — дивиденды и рейтинги
+    ("TG:stocktoday",     "tg://stocktoday"),      # торговый flow
 ]
 
 _BACKOFF_MAX_MINUTES = 120

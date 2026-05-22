@@ -28,11 +28,10 @@ _FIXTURE_SOURCES = {
     "investing":  "Investing",
     "moex":       "MOEX",
     "smartlab":   "Smartlab",
-    "government": "Government",
+    "rbc":        "RBC",
 }
 
-# Sources that only serve RSS over HTTP (HTTPS times out or is not supported)
-_HTTP_ONLY_SOURCES = {"Government"}
+_HTTP_ONLY_SOURCES: set[str] = set()
 
 
 # ── seed integrity ─────────────────────────────────────────────────────────────
@@ -64,6 +63,10 @@ class TestSeedIntegrity:
             f"Expected ≥15 seeds, got {len(_RSS_SEEDS)}"
         )
 
+    def test_rbc_present(self):
+        names = {name for name, _ in _RSS_SEEDS}
+        assert "RBC" in names, "RBC source missing from seeds"
+
     def test_original_sources_present(self):
         """The 5 original sources must still be in the seeds."""
         names = {name for name, _ in _RSS_SEEDS}
@@ -74,7 +77,7 @@ class TestSeedIntegrity:
         """New sources added in MVP-6 and MVP+ must be present."""
         names = {name for name, _ in _RSS_SEEDS}
         for expected in ("BFM", "RIA", "Izvestia", "Gazeta", "Lenta", "RG", "Investing", "MOEX",
-                         "Smartlab", "Government"):
+                         "Smartlab"):
             assert expected in names, f"Source '{expected}' missing from seeds"
 
 

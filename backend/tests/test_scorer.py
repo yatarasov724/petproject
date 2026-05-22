@@ -220,3 +220,41 @@ class TestPublishability:
         )
         result = compute_score(title, source_count=5)
         assert result.score <= 100
+
+
+# ── stock market coverage ─────────────────────────────────────────────────────
+
+class TestStockMarketCoverage:
+    """Regression tests: company + corporate event reliably reaches PUBLISH_THRESHOLD."""
+
+    def test_company_plus_earnings_verb_publishable(self):
+        result = compute_score("Сбербанк нарастил прибыль на 20 процентов")
+        assert result.score >= PUBLISH_THRESHOLD
+
+    def test_company_plus_ebitda_publishable(self):
+        result = compute_score("МТС увеличила EBITDA на 15 процентов")
+        assert result.score >= PUBLISH_THRESHOLD
+
+    def test_ipo_without_known_company_publishable(self):
+        # IPO нового эмитента — компании нет в MOEX-списке
+        result = compute_score("Неизвестная компания готовится к IPO на бирже")
+        assert result.score >= PUBLISH_THRESHOLD
+
+    def test_analyst_target_plus_company_publishable(self):
+        result = compute_score("Аналитики повысили целевую цену акций Газпрома")
+        assert result.score >= PUBLISH_THRESHOLD
+
+    def test_nornickel_genitive_plus_dividends_publishable(self):
+        # Проверяем исправленный стем "норникел" — ловит "норникеля"
+        result = compute_score("Норникель объявил о дивидендах за 2025 год")
+        assert result.score >= PUBLISH_THRESHOLD
+
+    def test_vtb_dividends_publishable(self):
+        # Новая компания ВТБ
+        result = compute_score("ВТБ рекомендовал дивиденды за 2025 год")
+        assert result.score >= PUBLISH_THRESHOLD
+
+    def test_sector_earnings_without_company_not_publishable(self):
+        # Без конкретной компании — не проходит (защита от мусора)
+        result = compute_score("Чистая прибыль банковского сектора выросла в первом квартале")
+        assert result.score < PUBLISH_THRESHOLD
