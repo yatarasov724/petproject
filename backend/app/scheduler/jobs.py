@@ -24,6 +24,8 @@ from app.db.database import get_db
 from app.db import queries
 from app.bot import commands as bot_commands
 from app.calendar.moex_client import MoexIssClient
+from app.calendar.notify import send_calendar_notify
+from app.db.queries import _from_json
 from app.pipeline.fetcher import fetch_all
 from app.pipeline.tg_fetcher import fetch_all_tg
 from app.pipeline.orchestrator import process
@@ -340,6 +342,47 @@ def backup_job() -> None:
         )
     except Exception:
         logger.exception("backup_job crashed")
+
+
+async def calendar_notify_job() -> None:
+    """
+    Daily (06:00 UTC / 09:00 MSK): send DMs for events happening in 3 days.
+    Deduplicates via calendar_notifications_sent.
+    """
+    db = get_db()
+    try:
+        rows = queries.get_pending_calendar_notifications(db, days_ahead=3)
+        if not rows:
+            logger.info(
+                "calendar_notify: nothing to send today",
+                extra={"event": "calendar_notify_empty"},
+            )
+            return
+
+        sent = 0
+        for row in rows:
+            details = _from_json(row["details"])
+            ok = await send_calendar_notify(
+                telegram_id=row["telegram_id"],
+                ticker=row["ticker"],
+                event_type=row["event_type"],
+                event_date=row["event_date"],
+                details=details,
+                days_ahead=3,
+            )
+            if ok:
+                queries.mark_calendar_notification_sent(db, row["user_id"], row["event_id"])
+                sent += 1
+
+        logger.info(
+            "calendar_notify complete: %d sent",
+            sent,
+            extra={"event": "calendar_notify_complete", "sent": sent},
+        )
+    except Exception:
+        logger.exception("calendar_notify_job crashed")
+    finally:
+        db.close()
 
 
 async def calendar_sync_job() -> None:
