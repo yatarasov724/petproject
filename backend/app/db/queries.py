@@ -4,8 +4,9 @@ Each function receives an open DBConnection and is responsible
 for committing only what it touches. The caller owns the connection lifecycle.
 """
 
+import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
 import psycopg2
@@ -1104,27 +1105,28 @@ def _iso(dt: datetime) -> str:
 # Calendar — corporate events
 # ══════════════════════════════════════════════════════════════════════════════
 
-import json as _json_lib
-
-
 def _to_json(obj: dict) -> str:
-    return _json_lib.dumps(obj, ensure_ascii=False)
+    return json.dumps(obj, ensure_ascii=False)
 
 
 def _from_json(val) -> dict:
-    """Safely deserialize JSONB value (may already be dict or a JSON string)."""
+    """
+    Safely deserialize JSONB value returned by psycopg2.
+    psycopg2 may return JSONB columns already parsed as dict, or as a raw string.
+    Used by jobs.py to deserialize event details before formatting DMs.
+    """
     if val is None:
         return {}
     if isinstance(val, dict):
         return val
-    return _json_lib.loads(val)
+    return json.loads(val)
 
 
 def upsert_corporate_event(
     db: DBConnection,
     ticker: str,
     event_type: str,
-    event_date,          # datetime.date
+    event_date: date,
     details: dict,
 ) -> int:
     """
@@ -1212,8 +1214,8 @@ def mark_calendar_notification_sent(
 def get_portfolio_events_for_user(
     db: DBConnection,
     telegram_id: int,
-    from_date,   # datetime.date
-    to_date,     # datetime.date
+    from_date: date,
+    to_date: date,
 ) -> list[Any]:
     """
     Return corporate events in [from_date, to_date] for tickers
