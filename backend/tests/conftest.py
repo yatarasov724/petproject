@@ -49,12 +49,14 @@ def _init_test_db():
 
 
 @pytest.fixture(autouse=True)
-def _use_test_db(monkeypatch):
+def _use_test_db(_init_test_db, monkeypatch):
     """
     Point get_db() to the test database for every test.
 
-    app.db.database.get_db reads settings.database_url at call time, so we
-    patch that attribute to the test DSN before each test and restore it after.
+    Depends on _init_test_db to ensure the test database exists before the
+    patch takes effect. app.db.database.get_db reads settings.database_url at
+    call time, so we patch that attribute to the test DSN before each test and
+    restore it after (monkeypatch handles restoration automatically).
     """
     import app.db.database as _db_module
     monkeypatch.setattr(_db_module.settings, "database_url", _TEST_DSN)
