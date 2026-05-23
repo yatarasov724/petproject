@@ -1098,3 +1098,136 @@ def _utcnow_iso() -> str:
 
 def _iso(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Calendar — corporate events
+# ══════════════════════════════════════════════════════════════════════════════
+
+import json as _json_lib
+
+
+def _to_json(obj: dict) -> str:
+    return _json_lib.dumps(obj, ensure_ascii=False)
+
+
+def _from_json(val) -> dict:
+    """Safely deserialize JSONB value (may already be dict or a JSON string)."""
+    if val is None:
+        return {}
+    if isinstance(val, dict):
+        return val
+    return _json_lib.loads(val)
+
+
+def upsert_corporate_event(
+    db: DBConnection,
+    ticker: str,
+    event_type: str,
+    event_date,          # datetime.date
+    details: dict,
+) -> int:
+    """
+    Insert or update a corporate event.
+    ON CONFLICT (ticker, event_type, event_date) updates details + synced_at.
+    Returns the event id.
+    """
+    cur = db.execute(
+        """
+        INSERT INTO corporate_events (ticker, event_type, event_date, details)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (ticker, event_type, event_date) DO UPDATE
+            SET details   = EXCLUDED.details,
+                synced_at = NOW()
+        RETURNING id
+        """,
+        (ticker, event_type, event_date, _to_json(details)),
+    )
+    event_id = cur.fetchone()["id"]
+    db.commit()
+    return event_id
+
+
+def get_all_portfolio_tickers(db: DBConnection) -> list[str]:
+    """Return sorted list of unique tickers across all portfolio_subscriptions."""
+    rows = db.execute(
+        "SELECT DISTINCT ticker FROM portfolio_subscriptions ORDER BY ticker"
+    ).fetchall()
+    return [r["ticker"] for r in rows]
+
+
+def get_pending_calendar_notifications(
+    db: DBConnection,
+    days_ahead: int,
+) -> list[Any]:
+    """
+    Return (event, user) pairs where:
+      - event_date == today + days_ahead
+      - user has that ticker in their portfolio
+      - notification NOT yet sent (not in calendar_notifications_sent)
+
+    Row fields: event_id, ticker, event_type, event_date, details, user_id, telegram_id
+    """
+    target_date = (datetime.now(timezone.utc).date() + timedelta(days=days_ahead))
+    return db.execute(
+        """
+        SELECT
+            ce.id          AS event_id,
+            ce.ticker,
+            ce.event_type,
+            ce.event_date,
+            ce.details,
+            u.id           AS user_id,
+            u.telegram_id
+        FROM   corporate_events             ce
+        JOIN   portfolio_subscriptions      ps  ON ps.ticker  = ce.ticker
+        JOIN   users                        u   ON u.id       = ps.user_id
+        LEFT   JOIN calendar_notifications_sent cns
+               ON cns.event_id = ce.id AND cns.user_id = u.id
+        WHERE  ce.event_date = %s
+          AND  cns.id IS NULL
+        ORDER  BY ce.ticker, u.telegram_id
+        """,
+        (target_date,),
+    ).fetchall()
+
+
+def mark_calendar_notification_sent(
+    db: DBConnection,
+    user_id: int,
+    event_id: int,
+) -> None:
+    """Record that a calendar DM was sent. Idempotent via ON CONFLICT DO NOTHING."""
+    db.execute(
+        """
+        INSERT INTO calendar_notifications_sent (user_id, event_id)
+        VALUES (%s, %s)
+        ON CONFLICT (user_id, event_id) DO NOTHING
+        """,
+        (user_id, event_id),
+    )
+    db.commit()
+
+
+def get_portfolio_events_for_user(
+    db: DBConnection,
+    telegram_id: int,
+    from_date,   # datetime.date
+    to_date,     # datetime.date
+) -> list[Any]:
+    """
+    Return corporate events in [from_date, to_date] for tickers
+    in the given user's portfolio. Ordered by event_date ASC.
+    """
+    return db.execute(
+        """
+        SELECT ce.ticker, ce.event_type, ce.event_date, ce.details
+        FROM   corporate_events        ce
+        JOIN   portfolio_subscriptions ps ON ps.ticker = ce.ticker
+        JOIN   users                   u  ON u.id      = ps.user_id
+        WHERE  u.telegram_id = %s
+          AND  ce.event_date BETWEEN %s AND %s
+        ORDER  BY ce.event_date, ce.ticker
+        """,
+        (telegram_id, from_date, to_date),
+    ).fetchall()
