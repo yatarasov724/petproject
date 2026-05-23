@@ -171,6 +171,57 @@ CREATE INDEX IF NOT EXISTS idx_subs_status     ON subscriptions(status);
 CREATE INDEX IF NOT EXISTS idx_subs_expires_at ON subscriptions(expires_at);
 
 
+-- ─── user_settings ─────────────────────────────────────────────────────────────
+-- One row per user, created lazily on first write. Row may not exist — callers
+-- treat a missing row as all-defaults (min_score=30, quiet hours off, no filter).
+CREATE TABLE IF NOT EXISTS user_settings (
+    id           SERIAL  PRIMARY KEY,
+    user_id      INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    min_score    INTEGER NOT NULL DEFAULT 30
+        CHECK (min_score BETWEEN 0 AND 100),
+    quiet_from   INTEGER CHECK (quiet_from IS NULL OR quiet_from BETWEEN 0 AND 23),
+    quiet_to     INTEGER CHECK (quiet_to   IS NULL OR quiet_to   BETWEEN 0 AND 23),
+    updated_at   TEXT    NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+    calendar_notify_days_before INTEGER NOT NULL DEFAULT 3
+        CHECK (calendar_notify_days_before BETWEEN 1 AND 30)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_settings_user_id ON user_settings(user_id);
+
+
+-- ─── corporate_events ─────────────────────────────────────────────────────────
+-- Synced from MOEX ISS API daily. One row per (ticker, event_type, event_date).
+-- event_type values: 'dividend_cutoff' | 'dividend_payment' | 'earnings' | 'buyback' | 'offer'
+-- details JSONB shape:
+--   dividend_cutoff / payment : {amount: 33.58, currency: "RUB"}
+--   earnings                  : {report_type: "МСФО"}
+--   buyback / offer           : {price: 250.0}
+CREATE TABLE IF NOT EXISTS corporate_events (
+    id          SERIAL       PRIMARY KEY,
+    ticker      VARCHAR(20)  NOT NULL,
+    event_type  VARCHAR(30)  NOT NULL,
+    event_date  DATE         NOT NULL,
+    details     JSONB,
+    source      VARCHAR(20)  NOT NULL DEFAULT 'moex_iss',
+    synced_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE(ticker, event_type, event_date)
+);
+CREATE INDEX IF NOT EXISTS idx_corp_events_date   ON corporate_events(event_date);
+CREATE INDEX IF NOT EXISTS idx_corp_events_ticker ON corporate_events(ticker);
+
+
+-- ─── calendar_notifications_sent ──────────────────────────────────────────────
+-- Dedup guard: one row per (user, event) once the DM is sent.
+CREATE TABLE IF NOT EXISTS calendar_notifications_sent (
+    id       SERIAL  PRIMARY KEY,
+    user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    event_id INTEGER NOT NULL REFERENCES corporate_events(id) ON DELETE CASCADE,
+    sent_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(user_id, event_id)
+);
+CREATE INDEX IF NOT EXISTS idx_cal_notif_user ON calendar_notifications_sent(user_id);
+
+
 -- ─── price_snapshots ───────────────────────────────────────────────────────────
 -- Records MOEX prices at publish time and 1h/24h later for historical correlation.
 CREATE TABLE IF NOT EXISTS price_snapshots (
