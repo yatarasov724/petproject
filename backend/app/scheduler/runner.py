@@ -10,7 +10,11 @@ from functools import partial
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.scheduler.jobs import poll_job, cleanup_job, backup_job, heartbeat_job, digest_job, bot_commands_job, price_snapshot_job
+from app.scheduler.jobs import (
+    poll_job, cleanup_job, backup_job, heartbeat_job, digest_job,
+    bot_commands_job, price_snapshot_job,
+    calendar_sync_job, calendar_notify_job, calendar_digest_job,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +79,46 @@ def start() -> None:
         max_instances=1,
         coalesce=True,
     )
+    # ── Corporate events calendar ────────────────────────────────────────────
+    # Nightly sync: 02:00 UTC (05:00 MSK)
+    _scheduler.add_job(
+        calendar_sync_job,
+        trigger="cron",
+        hour=2, minute=0,
+        timezone="UTC",
+        id="calendar_sync",
+        max_instances=1,
+        coalesce=True,
+    )
+
+    # Daily notify: 06:00 UTC (09:00 MSK)
+    _scheduler.add_job(
+        calendar_notify_job,
+        trigger="cron",
+        hour=6, minute=0,
+        timezone="UTC",
+        id="calendar_notify",
+        max_instances=1,
+        coalesce=True,
+    )
+
+    # Weekly digest: Sunday 16:00 UTC (19:00 MSK)
+    _scheduler.add_job(
+        calendar_digest_job,
+        trigger="cron",
+        day_of_week="sun",
+        hour=16, minute=0,
+        timezone="UTC",
+        id="calendar_digest",
+        max_instances=1,
+        coalesce=True,
+    )
     _scheduler.start()
-    logger.info("Scheduler started (poll=60s, cleanup=24h, backup=6h, heartbeat=5m, digest=22:00 MSK, bot=10s, price_snapshots=1h)")
+    logger.info(
+        "Scheduler started (poll=60s, cleanup=24h, backup=6h, heartbeat=5m, "
+        "digest=22:00 MSK, bot=10s, price_snapshots=1h, "
+        "calendar_sync=02:00 UTC, calendar_notify=06:00 UTC, calendar_digest=Sun 16:00 UTC)"
+    )
 
 
 def stop() -> None:
