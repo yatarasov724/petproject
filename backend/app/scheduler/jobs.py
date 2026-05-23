@@ -13,9 +13,10 @@ Each job:
 """
 
 import asyncio
+import json
 import logging
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.core import metrics
 import app.core.tg_client as _tg_client
@@ -31,6 +32,7 @@ from app.pipeline.tg_fetcher import fetch_all_tg
 from app.pipeline.orchestrator import process
 from app.pipeline.relevance import is_russia_relevant
 from app.telegram import client as tg
+from app.telegram.client import send_dm
 from app.telegram.formatter import format_digest
 
 logger = logging.getLogger(__name__)
@@ -431,3 +433,100 @@ async def calendar_sync_job() -> None:
         logger.exception("calendar_sync_job crashed")
     finally:
         db.close()
+
+
+async def calendar_digest_job() -> None:
+    """
+    Weekly digest (Sunday 16:00 UTC / 19:00 MSK):
+    Send each user a past-week + coming-week summary of portfolio events.
+    Only sends if at least one event is found in either window.
+    """
+    db = get_db()
+    try:
+        today     = datetime.now(timezone.utc).date()
+        past_from = today - timedelta(days=7)
+        future_to = today + timedelta(days=7)
+
+        user_rows = db.execute(
+            """
+            SELECT DISTINCT u.telegram_id
+            FROM   portfolio_subscriptions ps
+            JOIN   users u ON u.id = ps.user_id
+            ORDER  BY u.telegram_id
+            """
+        ).fetchall()
+
+        sent = 0
+        for row in user_rows:
+            tid = row["telegram_id"]
+            past   = queries.get_portfolio_events_for_user(
+                db, tid, from_date=past_from, to_date=today - timedelta(days=1)
+            )
+            future = queries.get_portfolio_events_for_user(
+                db, tid, from_date=today, to_date=future_to
+            )
+            if not past and not future:
+                continue
+
+            text = _format_weekly_digest(past, future)
+            ok   = await send_dm(tid, text)
+            if ok:
+                sent += 1
+
+        logger.info(
+            "calendar_digest complete: %d users notified",
+            sent,
+            extra={"event": "calendar_digest_complete", "sent": sent},
+        )
+    except Exception:
+        logger.exception("calendar_digest_job crashed")
+    finally:
+        db.close()
+
+
+def _format_weekly_digest(past_events: list, future_events: list) -> str:
+    """Format weekly digest as Telegram MarkdownV2. Pure function."""
+    _LABELS = {
+        "dividend_cutoff":  "💰 Отсечка",
+        "dividend_payment": "💸 Выплата",
+        "earnings":         "📊 Отчёт",
+        "buyback":          "🔄 Выкуп",
+        "offer":            "📋 Оферта",
+    }
+    _M = ["янв", "фев", "мар", "апр", "май", "июн",
+          "июл", "авг", "сен", "окт", "ноя", "дек"]
+
+    def _d(d) -> str:
+        return f"{d.day} {_M[d.month - 1]}"
+
+    def _esc(s: str) -> str:
+        for ch in r"\_*[]()~`>#+-=|{}.!":
+            s = s.replace(ch, "\\" + ch)
+        return s
+
+    def _row(ev) -> str:
+        label   = _LABELS.get(ev["event_type"], "📅")
+        details = ev["details"] if isinstance(ev["details"], dict) \
+                  else json.loads(ev["details"]) if ev["details"] else {}
+        suffix  = ""
+        if ev["event_type"] in ("dividend_cutoff", "dividend_payment"):
+            amt = details.get("amount")
+            if amt:
+                suffix = f" — {_esc(str(amt))} руб\\."
+        elif ev["event_type"] == "earnings":
+            rt = details.get("report_type", "")
+            if rt:
+                suffix = f" \\({_esc(rt)}\\)"
+        return f"• *{_esc(ev['ticker'])}* {label} {_d(ev['event_date'])}{suffix}"
+
+    lines = ["📊 *Дайджест портфеля*", ""]
+    if past_events:
+        lines.append("*На прошлой неделе:*")
+        lines.extend(_row(e) for e in past_events)
+        if future_events:
+            lines.append("")
+    if future_events:
+        lines.append("*На следующей неделе:*")
+        lines.extend(_row(e) for e in future_events)
+
+    return "\n".join(lines)
