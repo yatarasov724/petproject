@@ -22,6 +22,15 @@ _EVENT_LABELS: dict[str, str] = {
     "offer":            "📋 Оферта",
 }
 
+# Short labels used in /portfolio upcoming-events section
+_SHORT_LABELS: dict[str, str] = {
+    "dividend_cutoff":  "💰 Отсечка",
+    "dividend_payment": "💸 Выплата",
+    "earnings":         "📊 Отчёт",
+    "buyback":          "🔄 Выкуп",
+    "offer":            "📋 Оферта",
+}
+
 _MONTHS_RU = [
     "января", "февраля", "марта", "апреля", "мая", "июня",
     "июля", "августа", "сентября", "октября", "ноября", "декабря",
@@ -133,14 +142,6 @@ def format_portfolio_calendar(events: list) -> str:
     """
     if not events:
         return ""
-
-    _SHORT_LABELS: dict[str, str] = {
-        "dividend_cutoff":  "💰 Отсечка",
-        "dividend_payment": "💸 Выплата",
-        "earnings":         "📊 Отчёт",
-        "buyback":          "🔄 Выкуп",
-        "offer":            "📋 Оферта",
-    }
 
     lines = ["", "📅 *Ближайшие события \\(7 дней\\):*"]
     for ev in events:
