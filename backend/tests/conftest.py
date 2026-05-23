@@ -49,6 +49,18 @@ def _init_test_db():
 
 
 @pytest.fixture(autouse=True)
+def _use_test_db(monkeypatch):
+    """
+    Point get_db() to the test database for every test.
+
+    app.db.database.get_db reads settings.database_url at call time, so we
+    patch that attribute to the test DSN before each test and restore it after.
+    """
+    import app.db.database as _db_module
+    monkeypatch.setattr(_db_module.settings, "database_url", _TEST_DSN)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_ai():
     """
     Prevent background OpenRouter HTTP calls in every test.

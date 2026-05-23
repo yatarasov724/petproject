@@ -23,6 +23,7 @@ from app.core.alerting import send_ops as _send_ops
 from app.db.database import get_db
 from app.db import queries
 from app.bot import commands as bot_commands
+from app.calendar.moex_client import MoexIssClient
 from app.pipeline.fetcher import fetch_all
 from app.pipeline.tg_fetcher import fetch_all_tg
 from app.pipeline.orchestrator import process
@@ -339,3 +340,51 @@ def backup_job() -> None:
         )
     except Exception:
         logger.exception("backup_job crashed")
+
+
+async def calendar_sync_job() -> None:
+    """
+    Nightly (02:00 UTC): fetch corporate events from MOEX ISS for all portfolio tickers.
+    Upserts into corporate_events. Errors per ticker are absorbed.
+    """
+    db = get_db()
+    try:
+        tickers = queries.get_all_portfolio_tickers(db)
+        if not tickers:
+            logger.info(
+                "calendar_sync: no portfolio tickers — skipping",
+                extra={"event": "calendar_sync_skip_empty"},
+            )
+            return
+
+        client = MoexIssClient()
+        synced = 0
+        for ticker in tickers:
+            try:
+                events = await client.fetch_all(ticker, days_ahead=90)
+                for ev in events:
+                    queries.upsert_corporate_event(
+                        db,
+                        ticker=ev.ticker,
+                        event_type=ev.event_type,
+                        event_date=ev.event_date,
+                        details=ev.details,
+                    )
+                    synced += 1
+            except Exception:
+                logger.warning(
+                    "calendar_sync: error for ticker %s", ticker,
+                    exc_info=True,
+                    extra={"event": "calendar_sync_ticker_error", "ticker": ticker},
+                )
+
+        logger.info(
+            "calendar_sync complete: %d tickers, %d events",
+            len(tickers), synced,
+            extra={"event": "calendar_sync_complete",
+                   "tickers": len(tickers), "events": synced},
+        )
+    except Exception:
+        logger.exception("calendar_sync_job crashed")
+    finally:
+        db.close()
