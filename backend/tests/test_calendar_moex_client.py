@@ -101,7 +101,7 @@ async def test_fetch_events_returns_earnings():
 
 
 @pytest.mark.asyncio
-async def test_fetch_events_network_error_returns_empty(caplog):
+async def test_fetch_events_network_error_returns_empty():
     session = MagicMock()
     session.__aenter__ = AsyncMock(return_value=session)
     session.__aexit__ = AsyncMock(return_value=False)

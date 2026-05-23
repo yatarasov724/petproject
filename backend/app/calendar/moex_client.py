@@ -75,9 +75,14 @@ class MoexIssClient:
             col     = {name: i for i, name in enumerate(columns)}
 
             for row in rows:
-                cutoff_str  = row[col.get("registryclosedate", 0)]
+                # Required columns: skip row if absent rather than falling back to index 0
+                if "registryclosedate" not in col or "value" not in col:
+                    logger.warning("[MOEX] dividends %s: missing required columns in row", ticker)
+                    continue
+
+                cutoff_str  = row[col["registryclosedate"]]
                 payment_str = row[col["fixdate"]] if "fixdate" in col else None
-                amount      = row[col.get("value", 0)]
+                amount      = row[col["value"]]
                 currency    = row[col["currencyid"]] if "currencyid" in col else "RUB"
 
                 if not cutoff_str:
@@ -134,12 +139,16 @@ class MoexIssClient:
             col     = {name: i for i, name in enumerate(columns)}
 
             for row in rows:
-                iss_type   = row[col.get("event_type", 0)] if col else None
+                # Required columns: skip row if absent
+                if "event_type" not in col or "date_start" not in col:
+                    continue
+
+                iss_type   = row[col["event_type"]]
                 event_type = _EVENT_TYPE_MAP.get(str(iss_type or ""))
                 if not event_type:
                     continue
 
-                date_raw = row[col.get("date_start", 0)] if col else None
+                date_raw = row[col["date_start"]]
                 if not date_raw:
                     continue
                 try:
