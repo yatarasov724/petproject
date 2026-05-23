@@ -197,17 +197,18 @@ CREATE INDEX IF NOT EXISTS idx_user_settings_user_id ON user_settings(user_id);
 --   earnings                  : {report_type: "МСФО"}
 --   buyback / offer           : {price: 250.0}
 CREATE TABLE IF NOT EXISTS corporate_events (
-    id          SERIAL       PRIMARY KEY,
-    ticker      VARCHAR(20)  NOT NULL,
-    event_type  VARCHAR(30)  NOT NULL,
-    event_date  DATE         NOT NULL,
+    id          SERIAL  PRIMARY KEY,
+    ticker      TEXT    NOT NULL,
+    event_type  TEXT    NOT NULL,
+    event_date  DATE    NOT NULL,
     details     JSONB,
-    source      VARCHAR(20)  NOT NULL DEFAULT 'moex_iss',
-    synced_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    source      TEXT    NOT NULL DEFAULT 'moex_iss',
+    synced_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(ticker, event_type, event_date)
 );
-CREATE INDEX IF NOT EXISTS idx_corp_events_date   ON corporate_events(event_date);
-CREATE INDEX IF NOT EXISTS idx_corp_events_ticker ON corporate_events(ticker);
+-- Composite index covers the dominant query: WHERE ticker = ANY($1) AND event_date BETWEEN $2 AND $3
+CREATE INDEX IF NOT EXISTS idx_corp_events_ticker_date ON corporate_events(ticker, event_date);
+CREATE INDEX IF NOT EXISTS idx_corp_events_date        ON corporate_events(event_date);
 
 
 -- ─── calendar_notifications_sent ──────────────────────────────────────────────
