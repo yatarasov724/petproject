@@ -95,7 +95,7 @@ async def test_notify_sends_dm_to_subscribers(db):
         patch.object(db, "close"),
     ):
         from app.bot.portfolio import notify
-        await notify("SBER,GAZP", "Банки под давлением", cluster_id=1)
+        await notify("SBER,GAZP", "Банки под давлением", cluster_id=1, score=100)
 
     assert mock_dm.call_count == 2
     called_user_ids = {call.args[0] for call in mock_dm.call_args_list}
@@ -142,7 +142,7 @@ async def test_notify_message_contains_ticker_and_title(db):
         patch.object(db, "close"),
     ):
         from app.bot.portfolio import notify
-        await notify("SBER", "Сбер снижает прибыль", cluster_id=4)
+        await notify("SBER", "Сбер снижает прибыль", cluster_id=4, score=100)
 
     assert len(sent_texts) == 1
     assert "SBER" in sent_texts[0]
