@@ -170,3 +170,49 @@ def reset_source(
 
     logger.info("admin: source backoff reset", extra={"source_id": source_id})
     return _row_to_response(source)
+
+
+# ── test channel send ─────────────────────────────────────────────────────────
+
+from app.telegram.client import send_text
+
+
+@router.post("/test_channel", dependencies=[Depends(_require_admin)])
+async def test_channel():
+    """
+    Send a test message to the configured Telegram channel.
+    Use this to verify TELEGRAM_CHANNEL_ID and bot permissions are correct.
+    """
+    msg_id = await send_text("🔧 *Тест канала*\n\nКанал настроен корректно\\.")
+    if msg_id is None:
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to send to Telegram channel — check bot token and channel ID",
+        )
+    return {
+        "status": "ok",
+        "message_id": msg_id,
+        "channel_id": settings.telegram_channel_id,
+    }
+
+
+# ── pipeline diagnostics ──────────────────────────────────────────────────────
+
+@router.get("/pipeline/clusters", dependencies=[Depends(_require_admin)])
+def pipeline_clusters(
+    limit: int = 20,
+    db: DBConnection = Depends(_get_db),
+):
+    """
+    Return the most recently created event clusters with pipeline outcomes.
+    Fields: status (new/published/updated), sent_ok (True/None), decision, score.
+    """
+    rows = queries.get_recent_clusters(db, limit=min(limit, 100))
+    # Serialise datetime/date objects to ISO strings
+    serialised = []
+    for row in rows:
+        serialised.append({
+            k: v.isoformat() if hasattr(v, "isoformat") else v
+            for k, v in row.items()
+        })
+    return {"count": len(serialised), "clusters": serialised}

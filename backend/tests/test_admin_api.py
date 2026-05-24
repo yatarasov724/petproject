@@ -284,3 +284,79 @@ def test_get_recent_clusters_returns_rows(mem_db):
     assert result[0]["canonical_title"] == "Сбербанк объявил дивиденды"
     assert result[0]["tickers"] == "SBER"
     assert result[0]["sent_ok"] is None  # no telegram_sends row yet
+
+
+# ── test_channel ──────────────────────────────────────────────────────────────
+
+def test_test_channel_sends_message(client, monkeypatch):
+    from unittest.mock import AsyncMock, patch
+    mock_send = AsyncMock(return_value=12345)
+    with patch("app.api.routes.admin.send_text", mock_send):
+        resp = client.post(
+            "/admin/test_channel",
+            headers={"X-Admin-Key": _ADMIN_KEY},
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert body["message_id"] == 12345
+    mock_send.assert_called_once()
+
+
+def test_test_channel_returns_502_on_failure(client):
+    from unittest.mock import AsyncMock, patch
+    mock_send = AsyncMock(return_value=None)
+    with patch("app.api.routes.admin.send_text", mock_send):
+        resp = client.post(
+            "/admin/test_channel",
+            headers={"X-Admin-Key": _ADMIN_KEY},
+        )
+    assert resp.status_code == 502
+
+
+def test_test_channel_requires_admin_key(client):
+    resp = client.post("/admin/test_channel")
+    assert resp.status_code == 422
+
+
+# ── pipeline/clusters ─────────────────────────────────────────────────────────
+
+def test_pipeline_clusters_empty(client):
+    resp = client.get(
+        "/admin/pipeline/clusters",
+        headers={"X-Admin-Key": _ADMIN_KEY},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["count"] == 0
+    assert body["clusters"] == []
+
+
+def test_pipeline_clusters_returns_data(client, mem_db):
+    conn = mem_db._conn
+    with conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO event_clusters
+                (canonical_title, source_count, status, tickers,
+                 first_seen_at, keywords, title_tokens)
+            VALUES
+                ('Газпром сократил добычу', 2, 'published', 'GAZP',
+                 NOW() AT TIME ZONE 'UTC',
+                 'газпром добыча', 'газпром сократил добычу')
+        """)
+    conn.commit()
+
+    resp = client.get(
+        "/admin/pipeline/clusters?limit=5",
+        headers={"X-Admin-Key": _ADMIN_KEY},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["count"] == 1
+    assert body["clusters"][0]["canonical_title"] == "Газпром сократил добычу"
+    assert body["clusters"][0]["tickers"] == "GAZP"
+
+
+def test_pipeline_clusters_requires_admin(client):
+    resp = client.get("/admin/pipeline/clusters")
+    assert resp.status_code == 422
