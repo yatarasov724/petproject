@@ -50,6 +50,7 @@ def _welcome(first_name: str) -> str:
         "и присылаю важные новости по российскому рынку\\.\n\n"
         "Что умею:\n"
         "• */portfolio* — выбрать тикеры и получать личные алерты\n"
+        "• */calendar* — ближайшие события по портфелю на 30 дней\n"
         "• */settings* — настроить порог важности и тихие часы\n\n"
         "Выберите тикеры через */portfolio* и получайте алерты в личку\\."
     )
@@ -77,6 +78,32 @@ async def _handle_status(user_id: int) -> None:
         f"❌ Send errors: `{sent_fail}`\n"
         f"⚙️ Pipeline errors: `{pipeline_err}`"
     )
+    await send_dm(user_id, text)
+
+
+async def _handle_calendar(db: DBConnection, user_id: int) -> None:
+    """Handle /calendar command — upcoming events for the next 30 days."""
+    today = datetime.now(timezone.utc).date()
+    internal_id = _get_internal_user_id(db, user_id)
+    tickers = queries.get_user_tickers(db, internal_id) if internal_id else []
+    if not tickers:
+        await send_dm(
+            user_id,
+            "📭 Твой портфель пуст\\. Добавь тикеры через */portfolio*",
+        )
+        return
+    events = queries.get_portfolio_events_for_user(
+        db, user_id,
+        from_date=today,
+        to_date=today + timedelta(days=30),
+    )
+    if not events:
+        await send_dm(
+            user_id,
+            "📭 Нет событий по твоим тикерам на ближайшие 30 дней\\.",
+        )
+        return
+    text = format_portfolio_calendar(events, label="30 дней").lstrip("\n")
     await send_dm(user_id, text)
 
 
@@ -260,12 +287,15 @@ async def handle_update(db: DBConnection, update: dict) -> None:
         if user_id in ADMIN_USER_IDS:
             await _handle_status(user_id)
         else:
-            await send_dm(user_id, "⛔ Нет доступа\\.")  
+            await send_dm(user_id, "⛔ Нет доступа\\.")
+
+    elif cmd == "/calendar":
+        await _handle_calendar(db, user_id)
 
     else:
         await send_dm(
             user_id,
-            "Команды: */portfolio*, */settings*\\.",
+            "Команды: */portfolio*, */calendar*, */settings*\\.",
         )
 
     logger.info(
