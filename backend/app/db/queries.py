@@ -1233,3 +1233,48 @@ def get_portfolio_events_for_user(
         """,
         (telegram_id, from_date, to_date),
     ).fetchall()
+
+
+def toggle_user_ticker(db, user_id: int, ticker: str, adding: bool) -> None:
+    """Add or remove a single ticker — single SQL op instead of full DELETE+INSERT."""
+    if adding:
+        db.execute(
+            "INSERT INTO portfolio_subscriptions (user_id, ticker) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+            (user_id, ticker.upper()),
+        )
+    else:
+        db.execute(
+            "DELETE FROM portfolio_subscriptions WHERE user_id = %s AND ticker = %s",
+            (user_id, ticker.upper()),
+        )
+    db.commit()
+
+
+def get_recent_clusters(db: "DBConnection", limit: int = 20) -> list[dict]:
+    """
+    Return the most recently created event clusters with their last send status.
+    Used by admin /pipeline/clusters endpoint and /status bot command.
+    """
+    cur = db.execute("""
+        SELECT
+            ec.id,
+            ec.canonical_title,
+            ec.source_count,
+            ec.status,
+            ec.tickers,
+            ec.first_seen_at,
+            ts.decision,
+            ts.score,
+            ts.ok          AS sent_ok,
+            ts.error_text
+        FROM event_clusters ec
+        LEFT JOIN (
+            SELECT DISTINCT ON (cluster_id)
+                cluster_id, decision, score, ok, error_text
+            FROM telegram_sends
+            ORDER BY cluster_id, sent_at DESC
+        ) ts ON ts.cluster_id = ec.id
+        ORDER BY ec.first_seen_at DESC
+        LIMIT %s
+    """, (limit,))
+    return [dict(row) for row in cur.fetchall()]

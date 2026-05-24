@@ -240,3 +240,47 @@ class TestResetBackoff:
     def test_forbidden_without_key(self, client):
         resp = client.post("/admin/sources/1/reset", headers=_wrong_key())
         assert resp.status_code == 403
+
+
+# ── get_recent_clusters ─────────────────────────────────────────────────────────────────────────────
+
+def test_get_recent_clusters_empty(mem_db):
+    from app.db.queries import get_recent_clusters
+    result = get_recent_clusters(mem_db, limit=10)
+    assert result == []
+
+
+def test_get_recent_clusters_returns_rows(mem_db):
+    """Insert a cluster directly and verify it shows up."""
+    from app.db.queries import get_recent_clusters
+
+    conn = mem_db._conn
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO event_clusters
+                (canonical_title, source_count, status, tickers, first_seen_at,
+                 keywords, title_tokens)
+            VALUES
+                (%s, 1, %s, %s,
+                 NOW() AT TIME ZONE 'UTC',
+                 %s, %s)
+            RETURNING id
+            """,
+            (
+                'Сбербанк объявил дивиденды',
+                'new',
+                'SBER',
+                'сбербанк дивиденд',
+                'сбербанк объявил дивиденды',
+            ),
+        )
+        cluster_id = cur.fetchone()[0]
+    conn.commit()
+
+    result = get_recent_clusters(mem_db, limit=10)
+    assert len(result) == 1
+    assert result[0]["id"] == cluster_id
+    assert result[0]["canonical_title"] == "Сбербанк объявил дивиденды"
+    assert result[0]["tickers"] == "SBER"
+    assert result[0]["sent_ok"] is None  # no telegram_sends row yet
