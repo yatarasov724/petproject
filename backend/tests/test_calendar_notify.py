@@ -116,3 +116,29 @@ async def test_notify_job_skips_event_not_in_3_days(db):
         await calendar_notify_job()
 
     assert not mock_dm.called
+
+
+# ── format_portfolio_calendar label ──────────────────────────────────────────
+
+def test_format_portfolio_calendar_custom_label_appears_in_text():
+    from app.calendar.notify import format_portfolio_calendar
+    events = [{
+        "ticker": "SBER",
+        "event_type": "dividend_cutoff",
+        "event_date": date(2099, 7, 15),
+        "details": {"amount": 34.84, "currency": "RUB"},
+    }]
+    text = format_portfolio_calendar(events, label="30 дней")
+    assert "30" in text
+
+
+def test_format_portfolio_calendar_default_label_unchanged():
+    from app.calendar.notify import format_portfolio_calendar
+    events = [{
+        "ticker": "SBER",
+        "event_type": "dividend_cutoff",
+        "event_date": date(2099, 7, 15),
+        "details": {},
+    }]
+    text = format_portfolio_calendar(events)  # no label argument
+    assert "7" in text

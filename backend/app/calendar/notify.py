@@ -135,7 +135,7 @@ async def send_calendar_notify(
     return ok
 
 
-def format_portfolio_calendar(events: list) -> str:
+def format_portfolio_calendar(events: list, label: str = "7 дней") -> str:
     """
     Format upcoming events section for /portfolio command.
     Returns empty string when there are no events. Pure function.
@@ -143,9 +143,9 @@ def format_portfolio_calendar(events: list) -> str:
     if not events:
         return ""
 
-    lines = ["", "📅 *Ближайшие события \\(7 дней\\):*"]
+    lines = ["", f"📅 *Ближайшие события \\({_esc(label)}\\):*"]
     for ev in events:
-        label   = _SHORT_LABELS.get(ev["event_type"], "📅")
+        label_str = _SHORT_LABELS.get(ev["event_type"], "📅")
         details = ev["details"] if isinstance(ev["details"], dict) \
                   else json.loads(ev["details"]) if ev["details"] else {}
         suffix  = ""
@@ -158,6 +158,6 @@ def format_portfolio_calendar(events: list) -> str:
             if rt:
                 suffix = f" \\({_esc(rt)}\\)"
         lines.append(
-            f"• *{_esc(ev['ticker'])}* {label} {_fmt_date_short(ev['event_date'])}{suffix}"
+            f"• *{_esc(ev['ticker'])}* {label_str} {_fmt_date_short(ev['event_date'])}{suffix}"
         )
     return "\n".join(lines)
