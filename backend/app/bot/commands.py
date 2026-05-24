@@ -4,8 +4,7 @@ Telegram bot command handler.
 Commands:
   /start           — welcome + usage
   /portfolio       — show ticker keyboard (toggle subscriptions)
-  /settings        — настройки алертов (Pro)
-  /unsubscribe     — remove all subscriptions
+  /settings        — настройки алертов (порог важности + тихие часы)
 
 Inline keyboard flow:
   /portfolio → keyboard with all MOEX tickers grouped by sector
@@ -27,6 +26,10 @@ from app.calendar.notify import format_portfolio_calendar
 
 logger = logging.getLogger(__name__)
 
+# Admin-only commands. Add your Telegram user_id here.
+# Find it in server logs after sending /start: "user_id": <number>
+ADMIN_USER_IDS: frozenset[int] = frozenset({402652773})
+
 # Characters that must be escaped in Telegram MarkdownV2 (backslash first).
 _MD_SPECIAL = ["\\", "_", "*", "[", "]", "(", ")", "~", "`", ">",
                "#", "+", "-", "=", "|", "{", "}", ".", "!"]
@@ -47,124 +50,67 @@ def _welcome(first_name: str) -> str:
         "и присылаю важные новости по российскому рынку\\.\n\n"
         "Что умею:\n"
         "• */portfolio* — выбрать тикеры и получать личные алерты\n"
-        "• */settings* — настроить порог важности и тихие часы \\(Pro\\)\n"
-        "• */status* — статус подписки\n"
-        "• */subscribe* — перейти на Pro \\(299 ₽/мес\\)\n"
-        "• */unsubscribe* — отменить все подписки\n\n"
-        "🆓 *Бесплатно* — до 3 тикеров в портфеле\\."
+        "• */settings* — настроить порог важности и тихие часы\n\n"
+        "Выберите тикеры через */portfolio* и получайте алерты в личку\\."
     )
 
 
-# ── /status + /subscribe ──────────────────────────────────────────────────────
+async def _handle_status(user_id: int) -> None:
+    """Send pipeline health metrics to an admin user."""
+    from app.core import metrics as _metrics
 
-_MONTHS_RU = [
-    "января", "февраля", "марта", "апреля", "мая", "июня",
-    "июля", "августа", "сентября", "октября", "ноября", "декабря",
-]
-_PLAN_LABELS = {"monthly": "ежемесячный", "annual": "ежегодный"}
+    m = _metrics.snapshot()
+    uptime_h = _metrics.uptime_seconds() // 3600
+    fetched = m.get("articles_fetched", 0)
+    noise = m.get("articles_noise", 0)
+    noise_pct = int(noise / fetched * 100) if fetched else 0
+    sent_ok = m.get("tg_sent_ok", 0)
+    sent_fail = m.get("tg_sent_fail", 0)
+    pipeline_err = m.get("pipeline_errors", 0)
 
-
-def _fmt_date(iso: str) -> str:
-    dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
-    return f"{dt.day} {_MONTHS_RU[dt.month - 1]} {dt.year}"
-
-
-def _status_free_text() -> str:
-    return (
-        "🆓 *Бесплатный план*\n\n"
-        "• До 3 тикеров в портфеле\n"
-        "• Алерты из публичного канала\n\n"
-        "*/subscribe* — перейти на Pro \\(299 ₽/мес\\)"
+    text = (
+        "*📊 Pipeline Status*\n\n"
+        f"⏱ Uptime: `{uptime_h}h`\n"
+        f"📥 Fetched: `{fetched:,}`\n"
+        f"🚫 Noise: `{noise:,}` \\({noise_pct}%\\)\n"
+        f"📤 Sent OK: `{sent_ok}`\n"
+        f"❌ Send errors: `{sent_fail}`\n"
+        f"⚙️ Pipeline errors: `{pipeline_err}`"
     )
+    await send_dm(user_id, text)
 
-
-def _status_pro_text(plan: str, expires_at: str) -> str:
-    label = _PLAN_LABELS.get(plan, plan)
-    return (
-        "⭐ *Pro\\-план активен*\n\n"
-        f"Тариф: {label}\n"
-        f"Действует до: {_fmt_date(expires_at)}\n\n"
-        "*/subscribe* — продлить подписку"
-    )
-
-
-def _status_grace_text(expires_at: str) -> str:
-    expires_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
-    grace_end = expires_dt + timedelta(days=3)
-    grace_str = f"{grace_end.day} {_MONTHS_RU[grace_end.month - 1]} {grace_end.year}"
-    return (
-        "⚠️ *Подписка истекла*\n\n"
-        f"Pro\\-план действует до {grace_str} \\(льготный период\\)\\.\n"
-        "Продлите сейчас, чтобы не потерять доступ\\.\n\n"
-        "*/subscribe* — продлить"
-    )
-
-
-def _subscribe_text() -> str:
-    return (
-        "⭐ *MOEX\\.news Pro*\n\n"
-        "Что открывает Pro:\n"
-        "• Неограниченный портфель тикеров\n"
-        "• AI\\-контекст в портфельных алертах\n"
-        "• /ask — вопросы по тикеру \\(10/день\\)\n"
-        "• Приоритетная доставка алертов\n\n"
-        "Выберите тариф:"
-    )
-
-
-_SUBSCRIBE_KEYBOARD = {
-    "inline_keyboard": [
-        [{"text": "📅 Месяц — 299 ₽", "callback_data": "sub:monthly"}],
-        [{"text": "🗓 Год — 2 490 ₽  ·  207 ₽/мес", "callback_data": "sub:annual"}],
-    ]
-}
-
-_PAYMENT_PENDING = "⏳ Оплата через Telegram Stars подключается — следите за анонсом\\!"
 
 # Tickers grouped by sector for the keyboard
 _SECTORS: list[tuple[str, list[str]]] = [
-    ("🛢 Нефть / Газ",           ["GAZP", "LKOH", "ROSN", "NVTK", "TATN", "SNGS", "ENPG", "TRNFP", "BANEP"]),
-    ("🏦 Банки / Финансы",       ["SBER", "VTBR", "TCSG", "BSPB", "CBOM", "AFKS", "SVCB", "SPBE", "RENI"]),
-    ("⚙️ Металлы / Добыча",      ["GMKN", "CHMF", "NLMK", "MAGN", "PLZL", "ALRS", "POLY", "MTLR", "SELG", "RUAL", "RASP"]),
-    ("⚡️ Энергетика",            ["IRAO", "HYDR", "FEES"]),
-    ("💻 IT / Телеком",          ["YNDX", "MTSS", "RTKM", "VKCO", "POSI", "HHRU", "OZON"]),
-    ("🚢 Транспорт",             ["FLOT", "AFLT"]),
-    ("🏗 Недвижимость",          ["SMLT", "PIKK", "LSRG", "ETLN"]),
-    ("🛒 Ритейл / Прочие",       ["MGNT", "FIVE", "FIXP", "PHOR", "AGRO", "MOEX", "SGZH"]),
+    ("🛢 Нефть/Газ",    ["GAZP", "LKOH", "ROSN", "NVTK", "TATN", "SNGS", "ENPG", "TRNFP", "BANEP"]),
+    ("🏦 Банки",         ["SBER", "VTBR", "TCSG", "BSPB", "CBOM", "AFKS", "SVCB", "SPBE", "RENI"]),
+    ("⚙️ Металлы",       ["GMKN", "CHMF", "NLMK", "MAGN", "PLZL", "ALRS", "POLY", "MTLR", "SELG", "RUAL", "RASP"]),
+    ("⚡️ Энергетика",   ["IRAO", "HYDR", "FEES"]),
+    ("💻 IT/Телеком",    ["YNDX", "MTSS", "RTKM", "VKCO", "POSI", "HHRU", "OZON"]),
+    ("🚢 Транспорт",     ["FLOT", "AFLT"]),
+    ("🏗 Недвижимость",  ["SMLT", "PIKK", "LSRG", "ETLN"]),
+    ("🛒 Ритейл",        ["MGNT", "FIVE", "FIXP", "PHOR", "AGRO", "MOEX", "SGZH"]),
 ]
 
-FREE_TICKER_LIMIT = 3
-_GATE_ALERT = (
-    "🔒 Бесплатный план — максимум 3 тикера. "
-    "Напишите /subscribe чтобы получить Pro."
-)
-_TICKERS_PER_ROW = 4
+_TICKERS_PER_ROW = 3
 
 
-def _keyboard_header(plan: str, count: int) -> str:
-    if plan == "free":
-        return (
-            f"🗂 *Ваш портфель* \\({count}/{FREE_TICKER_LIMIT} тикера\\)\n\n"
-            "Выберите тикеры \\(нажмите чтобы добавить / убрать\\):"
-        )
-    return "🗂 *Ваш портфель*\n\nВыберите тикеры \\(нажмите чтобы добавить / убрать\\):"
+def _keyboard_header(count: int) -> str:
+    if count == 0:
+        return "🗂 *Портфель пуст*\n\nВыберите тикеры для получения личных алертов:"
+    return f"🗂 *Портфель*: {count} тик\\.\n\nНажмите сектор → выберите тикеры:"
 
 
 def _sector_badge(count: int, total: int) -> str:
-    if count == total:
-        return f"✅ {count}/{total}"
     if count == 0:
-        return f"0/{total}"
+        return "·"
+    if count == total:
+        return "✅"
     return f"{count}/{total}"
 
 
 def _build_keyboard(subscribed: set[str], open_sector: int = -1) -> dict:
-    """Accordion keyboard: sectors collapse/expand in place.
-
-    open_sector — index of the currently expanded sector, -1 means all collapsed.
-    The open_sector index is encoded into every callback_data so we never need
-    server-side session state.
-    """
+    """Accordion keyboard: sectors collapse/expand in place."""
     rows = []
     for idx, (sector_name, tickers) in enumerate(_SECTORS):
         count = sum(1 for t in tickers if t in subscribed)
@@ -294,7 +240,7 @@ async def handle_update(db: DBConnection, update: dict) -> None:
         return
 
     first_name = from_data.get("first_name", "")
-    plan = queries.upsert_user(db, user_id, from_data.get("username"), first_name)
+    queries.upsert_user(db, user_id, from_data.get("username"), first_name)
 
     cmd = text.split()[0].split("@")[0]  # strip @botusername suffix
 
@@ -303,36 +249,23 @@ async def handle_update(db: DBConnection, update: dict) -> None:
 
     elif cmd == "/portfolio":
         subscribed = set(queries.get_user_tickers(db, user_id))
-        await send_dm(user_id, _keyboard_header(plan, len(subscribed)), reply_markup=_build_keyboard(subscribed))
-
-    elif cmd == "/status":
-        sub = queries.get_active_subscription(db, user_id)
-        if sub is None:
-            await send_dm(user_id, _status_free_text())
-        elif sub["status"] == "grace":
-            await send_dm(user_id, _status_grace_text(sub["expires_at"]))
-        else:
-            await send_dm(user_id, _status_pro_text(sub["plan"], sub["expires_at"]))
-
-    elif cmd == "/subscribe":
-        await send_dm(user_id, _subscribe_text(), reply_markup=_SUBSCRIBE_KEYBOARD)
+        await send_dm(user_id, _keyboard_header(len(subscribed)), reply_markup=_build_keyboard(subscribed))
 
     elif cmd == "/settings":
-        from app.bot.guards import require_pro
-        if not await require_pro(db, user_id):
-            return
         internal_id = _get_internal_user_id(db, user_id)
         s = queries.get_user_settings(db, internal_id) if internal_id else queries._SETTINGS_DEFAULTS
         await send_dm(user_id, _settings_header(s), reply_markup=_build_settings_keyboard())
 
-    elif cmd == "/unsubscribe":
-        queries.clear_user_tickers(db, user_id)
-        await send_dm(user_id, "Все подписки удалены\\.")
+    elif cmd == "/status":
+        if user_id in ADMIN_USER_IDS:
+            await _handle_status(user_id)
+        else:
+            await send_dm(user_id, "⛔ Нет доступа\\.")  
 
     else:
         await send_dm(
             user_id,
-            "Команды: */portfolio*, */settings*, */status*, */subscribe*, */unsubscribe*\\.",
+            "Команды: */portfolio*, */settings*\\.",
         )
 
     logger.info(
@@ -351,37 +284,30 @@ async def _handle_callback(db: DBConnection, cbq: dict) -> None:
     chat_id = message.get("chat", {}).get("id", user_id)
     msg_id  = message.get("message_id")
 
-    plan       = queries.get_user_plan(db, user_id)
     subscribed = set(queries.get_user_tickers(db, user_id))
 
-    # sub:monthly / sub:annual — payment initiation (Stars flow wired in ticket #13)
-    if data.startswith("sub:"):
-        await answer_callback_query(cbq_id)
-        await send_dm(user_id, _PAYMENT_PENDING)
-        return
-
-    # s:{idx}:{current_open} — toggle accordion (no write, no limit check)
+    # s:{idx}:{current_open} — toggle accordion
     if data.startswith("s:"):
         await answer_callback_query(cbq_id)
         parts = data.split(":")
         idx, current_open = int(parts[1]), int(parts[2])
         new_open = -1 if idx == current_open else idx
-        header = _keyboard_header(plan, len(subscribed))
+        header = _keyboard_header(len(subscribed))
         await edit_dm(chat_id, msg_id, header, reply_markup=_build_keyboard(subscribed, new_open))
         return
 
-    # t:{ticker}:{open_sector} — toggle individual ticker
+    # t:{ticker}:{open_sector} — toggle individual ticker (single SQL op)
     if data.startswith("t:"):
         parts = data.split(":")
         ticker, open_sector = parts[1], int(parts[2])
         adding = ticker not in subscribed
-        if adding and plan == "free" and len(subscribed) >= FREE_TICKER_LIMIT:
-            await answer_callback_query(cbq_id, _GATE_ALERT, show_alert=True)
-            return
         await answer_callback_query(cbq_id)
-        subscribed ^= {ticker}
-        queries.set_user_tickers(db, user_id, list(subscribed))
-        header = _keyboard_header(plan, len(subscribed))
+        queries.toggle_user_ticker(db, user_id, ticker, adding)
+        if adding:
+            subscribed.add(ticker)
+        else:
+            subscribed.discard(ticker)
+        header = _keyboard_header(len(subscribed))
         await edit_dm(chat_id, msg_id, header, reply_markup=_build_keyboard(subscribed, open_sector))
         return
 
@@ -391,37 +317,29 @@ async def _handle_callback(db: DBConnection, cbq: dict) -> None:
         idx, open_sector = int(parts[1]), int(parts[2])
         _, sector_tickers = _SECTORS[idx]
         all_selected = all(t in subscribed for t in sector_tickers)
-        if not all_selected:
-            new_count = len(subscribed | set(sector_tickers))
-            if plan == "free" and new_count > FREE_TICKER_LIMIT:
-                await answer_callback_query(cbq_id, _GATE_ALERT, show_alert=True)
-                return
         await answer_callback_query(cbq_id)
         if all_selected:
             subscribed -= set(sector_tickers)
         else:
             subscribed |= set(sector_tickers)
         queries.set_user_tickers(db, user_id, list(subscribed))
-        header = _keyboard_header(plan, len(subscribed))
+        header = _keyboard_header(len(subscribed))
         await edit_dm(chat_id, msg_id, header, reply_markup=_build_keyboard(subscribed, open_sector))
         return
 
     if data == "all_on":
-        if plan == "free":
-            await answer_callback_query(cbq_id, _GATE_ALERT, show_alert=True)
-            return
         await answer_callback_query(cbq_id)
         all_tickers = [t for _, tickers in _SECTORS for t in tickers]
         queries.set_user_tickers(db, user_id, all_tickers)
         subscribed = set(all_tickers)
-        header = _keyboard_header(plan, len(subscribed))
+        header = _keyboard_header(len(subscribed))
         await edit_dm(chat_id, msg_id, header, reply_markup=_build_keyboard(subscribed))
         return
 
     if data == "all_off":
         await answer_callback_query(cbq_id)
         queries.set_user_tickers(db, user_id, [])
-        header = _keyboard_header(plan, 0)
+        header = _keyboard_header(0)
         await edit_dm(chat_id, msg_id, header, reply_markup=_build_keyboard(set()))
         return
 
