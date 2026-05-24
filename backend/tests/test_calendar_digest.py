@@ -14,7 +14,7 @@ def _make_user_with_ticker(db, telegram_id: int, ticker: str) -> int:
     uid = cur.fetchone()["id"]
     db.execute(
         "INSERT INTO portfolio_subscriptions (user_id, ticker) VALUES (%s, %s)",
-        (uid, ticker),
+        (telegram_id, ticker),
     )
     db.commit()
     return uid

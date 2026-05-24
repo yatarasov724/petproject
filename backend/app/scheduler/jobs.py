@@ -449,10 +449,9 @@ async def calendar_digest_job() -> None:
 
         user_rows = db.execute(
             """
-            SELECT DISTINCT u.telegram_id
+            SELECT DISTINCT ps.user_id AS telegram_id
             FROM   portfolio_subscriptions ps
-            JOIN   users u ON u.id = ps.user_id
-            ORDER  BY u.telegram_id
+            ORDER  BY ps.user_id
             """
         ).fetchall()
 

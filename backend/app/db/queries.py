@@ -1183,7 +1183,7 @@ def get_pending_calendar_notifications(
             u.telegram_id
         FROM   corporate_events             ce
         JOIN   portfolio_subscriptions      ps  ON ps.ticker  = ce.ticker
-        JOIN   users                        u   ON u.id       = ps.user_id
+        JOIN   users                        u   ON u.telegram_id = ps.user_id
         LEFT   JOIN calendar_notifications_sent cns
                ON cns.event_id = ce.id AND cns.user_id = u.id
         WHERE  ce.event_date = %s
@@ -1226,8 +1226,7 @@ def get_portfolio_events_for_user(
         SELECT ce.ticker, ce.event_type, ce.event_date, ce.details
         FROM   corporate_events        ce
         JOIN   portfolio_subscriptions ps ON ps.ticker = ce.ticker
-        JOIN   users                   u  ON u.id      = ps.user_id
-        WHERE  u.telegram_id = %s
+        WHERE  ps.user_id = %s
           AND  ce.event_date BETWEEN %s AND %s
         ORDER  BY ce.event_date, ce.ticker
         """,

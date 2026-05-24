@@ -14,7 +14,7 @@ def _make_user_with_ticker(db, telegram_id: int, ticker: str) -> int:
     uid = cur.fetchone()["id"]
     db.execute(
         "INSERT INTO portfolio_subscriptions (user_id, ticker) VALUES (%s, %s)",
-        (uid, ticker),
+        (telegram_id, ticker),
     )
     db.commit()
     return uid
@@ -33,14 +33,14 @@ async def test_calendar_empty_portfolio_sends_prompt(db):
 
     mock_dm.assert_called_once()
     text = mock_dm.call_args[0][1]
-    assert "портфель" in text.lower() or "portfolio" in text.lower()
+    assert "портфель пуст" in text.lower()
+    assert "/portfolio" in text
 
 
 @pytest.mark.asyncio
 async def test_calendar_no_upcoming_events_sends_empty_message(db):
     """User has tickers but no events in corporate_events → friendly empty message."""
     _make_user_with_ticker(db, 301, "SBER")
-    # corporate_events table is empty
 
     with patch("app.bot.commands.send_dm",
                new_callable=AsyncMock, return_value=1) as mock_dm:
@@ -49,7 +49,7 @@ async def test_calendar_no_upcoming_events_sends_empty_message(db):
 
     mock_dm.assert_called_once()
     text = mock_dm.call_args[0][1]
-    assert "нет событий" in text.lower() or "нет" in text.lower()
+    assert "нет событий" in text.lower()
 
 
 @pytest.mark.asyncio

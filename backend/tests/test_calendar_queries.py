@@ -76,9 +76,9 @@ def test_upsert_updates_existing_event(db):
 # ── get_all_portfolio_tickers ─────────────────────────────────────────────────
 
 def test_get_all_portfolio_tickers_returns_unique(db):
-    uid = _make_user(db, 222)
-    _subscribe(db, uid, "SBER")
-    _subscribe(db, uid, "GAZP")
+    _make_user(db, 222)
+    _subscribe(db, 222, "SBER")
+    _subscribe(db, 222, "GAZP")
     tickers = queries.get_all_portfolio_tickers(db)
     assert set(tickers) >= {"SBER", "GAZP"}
 
@@ -91,7 +91,7 @@ def test_get_all_portfolio_tickers_empty(db):
 
 def test_pending_notifications_returns_matching(db):
     uid = _make_user(db, 333)
-    _subscribe(db, uid, "SBER")
+    _subscribe(db, 333, "SBER")
     eid = _make_event(db, ticker="SBER", days=3)
     rows = queries.get_pending_calendar_notifications(db, days_ahead=3)
     assert any(r["event_id"] == eid and r["telegram_id"] == 333 for r in rows)
@@ -99,7 +99,7 @@ def test_pending_notifications_returns_matching(db):
 
 def test_pending_notifications_skips_already_sent(db):
     uid = _make_user(db, 444)
-    _subscribe(db, uid, "SBER")
+    _subscribe(db, 444, "SBER")
     eid = _make_event(db, ticker="SBER", days=3)
     queries.mark_calendar_notification_sent(db, uid, eid)
     rows = queries.get_pending_calendar_notifications(db, days_ahead=3)
@@ -107,8 +107,8 @@ def test_pending_notifications_skips_already_sent(db):
 
 
 def test_pending_notifications_ignores_wrong_date(db):
-    uid = _make_user(db, 555)
-    _subscribe(db, uid, "SBER")
+    _make_user(db, 555)
+    _subscribe(db, 555, "SBER")
     _make_event(db, ticker="SBER", days=5)  # 5 days out, not 3
     rows = queries.get_pending_calendar_notifications(db, days_ahead=3)
     assert rows == []
@@ -131,8 +131,8 @@ def test_mark_sent_is_idempotent(db):
 # ── get_portfolio_events_for_user ─────────────────────────────────────────────
 
 def test_get_portfolio_events_only_returns_users_tickers(db):
-    uid = _make_user(db, 777)
-    _subscribe(db, uid, "LKOH")
+    _make_user(db, 777)
+    _subscribe(db, 777, "LKOH")
     today = date.today()
     queries.upsert_corporate_event(db, "LKOH", "earnings", today + timedelta(days=2),
                                    {"report_type": "МСФО"})

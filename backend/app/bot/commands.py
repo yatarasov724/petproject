@@ -84,8 +84,7 @@ async def _handle_status(user_id: int) -> None:
 async def _handle_calendar(db: DBConnection, user_id: int) -> None:
     """Handle /calendar command — upcoming events for the next 30 days."""
     today = datetime.now(timezone.utc).date()
-    internal_id = _get_internal_user_id(db, user_id)
-    tickers = queries.get_user_tickers(db, internal_id) if internal_id else []
+    tickers = queries.get_user_tickers(db, user_id)
     if not tickers:
         await send_dm(
             user_id,
@@ -95,7 +94,7 @@ async def _handle_calendar(db: DBConnection, user_id: int) -> None:
     events = queries.get_portfolio_events_for_user(
         db, user_id,
         from_date=today,
-        to_date=today + timedelta(days=30),
+        to_date=today + timedelta(days=29),
     )
     if not events:
         await send_dm(
