@@ -3,7 +3,6 @@ import pytest
 from unittest.mock import AsyncMock, patch
 
 from app.bot.commands import handle_update, ADMIN_USER_IDS
-from app.db import queries
 
 
 ADMIN_USER_ID = 402652773
