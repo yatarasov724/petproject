@@ -23,6 +23,7 @@ from app.db.database import init_db, get_db
 from app.db.queries import seed_sources
 from app.scheduler import runner
 from app.api.routes.admin import router as admin_router
+import aiohttp
 
 # ── logging — must be first ───────────────────────────────────────────────────
 logging_setup.configure(
@@ -50,7 +51,8 @@ app.add_middleware(
 
 async def _set_my_commands() -> None:
     """Register bot commands in Telegram so they appear in the / menu."""
-    import aiohttp as _aiohttp
+    if settings.dry_run:
+        return
     url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/setMyCommands"
     commands = [
         {"command": "portfolio", "description": "Мой портфель"},
@@ -59,7 +61,7 @@ async def _set_my_commands() -> None:
         {"command": "help",      "description": "Помощь"},
     ]
     try:
-        async with _aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
             await session.post(url, json={"commands": commands})
         logger.info("bot commands registered", extra={"event": "set_my_commands_ok"})
     except Exception as exc:
@@ -77,7 +79,7 @@ async def startup() -> None:
         db.close()
 
     await _tg_client.connect()  # no-op if TG credentials are not configured
-    await _set_my_commands()          # new line
+    await _set_my_commands()
     runner.start()
     logger.info("app started", extra={"event": "app_started"})
 

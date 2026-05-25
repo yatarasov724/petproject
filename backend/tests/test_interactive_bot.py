@@ -20,7 +20,7 @@ async def test_set_my_commands_sends_correct_commands():
     mock_session.__aexit__ = AsyncMock(return_value=False)
     mock_session.post = mock_post
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch("app.main.aiohttp.ClientSession", return_value=mock_session):
         from app.main import _set_my_commands
         await _set_my_commands()
 
