@@ -195,3 +195,190 @@ async def test_help_command_sends_help_text(db):
     assert "/portfolio" in text
     assert "/calendar" in text
     assert "/settings" in text
+
+
+def _make_callback(user_id: int, data: str, message_id: int = 1, update_id: int = 1) -> dict:
+    return {
+        "update_id": update_id,
+        "callback_query": {
+            "id": "cbq_test",
+            "from": {"id": user_id, "first_name": "Test"},
+            "data": data,
+            "message": {
+                "message_id": message_id,
+                "chat": {"id": user_id},
+            },
+        },
+    }
+
+
+def test_build_keyboard_custom_done_callback():
+    """_build_keyboard() with done_callback='onb:2' uses that as the done button callback."""
+    from app.bot.commands import _build_keyboard
+    kb = _build_keyboard(set(), done_callback="onb:2")
+    all_data = [btn["callback_data"] for row in kb["inline_keyboard"] for btn in row]
+    assert "onb:2" in all_data
+    assert "done" not in all_data
+
+
+def test_build_keyboard_default_done_callback():
+    """_build_keyboard() default done_callback is 'done'."""
+    from app.bot.commands import _build_keyboard
+    kb = _build_keyboard(set())
+    all_data = [btn["callback_data"] for row in kb["inline_keyboard"] for btn in row]
+    assert "done" in all_data
+
+
+@pytest.mark.asyncio
+async def test_onb_start_sends_portfolio_keyboard(db):
+    """`onb:start` sends a new message with portfolio keyboard using onb:2 done button."""
+    sent: list[dict] = []
+
+    async def capture_dm(user_id, text, reply_markup=None, **kwargs):
+        sent.append({"reply_markup": reply_markup})
+        return 1
+
+    with (
+        patch("app.bot.commands.answer_callback_query", AsyncMock()),
+        patch("app.bot.commands.edit_dm", AsyncMock(return_value=True)),
+        patch("app.bot.commands.send_dm", side_effect=capture_dm),
+    ):
+        from app.bot.commands import handle_update
+        await handle_update(db, _make_callback(111, "onb:start"))
+
+    all_data = [
+        btn["callback_data"]
+        for msg in sent
+        if msg.get("reply_markup") and "inline_keyboard" in msg["reply_markup"]
+        for row in msg["reply_markup"]["inline_keyboard"]
+        for btn in row
+    ]
+    assert "onb:2" in all_data
+
+
+@pytest.mark.asyncio
+async def test_onb_2_sends_score_keyboard(db):
+    """`onb:2` sends step 3 — score selection keyboard."""
+    sent: list[dict] = []
+
+    async def capture_dm(user_id, text, reply_markup=None, **kwargs):
+        sent.append({"text": text, "reply_markup": reply_markup})
+        return 1
+
+    with (
+        patch("app.bot.commands.answer_callback_query", AsyncMock()),
+        patch("app.bot.commands.edit_dm", AsyncMock(return_value=True)),
+        patch("app.bot.commands.send_dm", side_effect=capture_dm),
+    ):
+        from app.bot.commands import handle_update
+        await handle_update(db, _make_callback(111, "onb:2"))
+
+    all_data = [
+        btn["callback_data"]
+        for msg in sent
+        if msg.get("reply_markup") and "inline_keyboard" in msg["reply_markup"]
+        for row in msg["reply_markup"]["inline_keyboard"]
+        for btn in row
+    ]
+    assert "onb:score:30" in all_data
+    assert "onb:skip:score" in all_data
+
+
+@pytest.mark.asyncio
+async def test_onb_score_saves_and_sends_quiet_keyboard(db):
+    """`onb:score:50` saves the score and shows step 4 (quiet hours)."""
+    from app.db import queries
+    queries.upsert_user(db, 111, None, "Test")
+
+    sent: list[dict] = []
+
+    async def capture_dm(user_id, text, reply_markup=None, **kwargs):
+        sent.append({"reply_markup": reply_markup})
+        return 1
+
+    with (
+        patch("app.bot.commands.answer_callback_query", AsyncMock()),
+        patch("app.bot.commands.edit_dm", AsyncMock(return_value=True)),
+        patch("app.bot.commands.send_dm", side_effect=capture_dm),
+    ):
+        from app.bot.commands import handle_update
+        await handle_update(db, _make_callback(111, "onb:score:50"))
+
+    all_data = [
+        btn["callback_data"]
+        for msg in sent
+        if msg.get("reply_markup") and "inline_keyboard" in msg["reply_markup"]
+        for row in msg["reply_markup"]["inline_keyboard"]
+        for btn in row
+    ]
+    assert "onb:quiet:off" in all_data
+    assert "onb:skip:quiet" in all_data
+
+    # Score saved in DB
+    user_row = queries.get_user(db, 111)
+    s = queries.get_user_settings(db, user_row["id"])
+    assert s["min_score"] == 50
+
+
+@pytest.mark.asyncio
+async def test_onb_quiet_saves_and_shows_done(db):
+    """`onb:quiet:22:8` saves quiet hours and shows step 5 with reply keyboard."""
+    from app.db import queries
+    queries.upsert_user(db, 111, None, "Test")
+    queries.set_user_tickers(db, 111, ["SBER"])
+
+    sent: list[dict] = []
+
+    async def capture_dm(user_id, text, reply_markup=None, **kwargs):
+        sent.append({"reply_markup": reply_markup})
+        return 1
+
+    with (
+        patch("app.bot.commands.answer_callback_query", AsyncMock()),
+        patch("app.bot.commands.edit_dm", AsyncMock(return_value=True)),
+        patch("app.bot.commands.send_dm", side_effect=capture_dm),
+    ):
+        from app.bot.commands import handle_update
+        await handle_update(db, _make_callback(111, "onb:quiet:22:8"))
+
+    # Reply keyboard should appear
+    reply_keyboards = [
+        msg["reply_markup"]
+        for msg in sent
+        if msg.get("reply_markup", {}).get("keyboard") == [[{"text": "☰ Меню"}]]
+    ]
+    assert len(reply_keyboards) == 1
+
+    # Quiet hours saved
+    user_row = queries.get_user(db, 111)
+    s = queries.get_user_settings(db, user_row["id"])
+    assert s["quiet_from"] == 22
+    assert s["quiet_to"] == 8
+
+
+@pytest.mark.asyncio
+async def test_onb_skip_quiet_shows_done_without_saving(db):
+    """`onb:skip:quiet` shows step 5 without changing quiet hours."""
+    from app.db import queries
+    queries.upsert_user(db, 111, None, "Test")
+    queries.set_user_tickers(db, 111, ["GAZP"])
+
+    sent: list[dict] = []
+
+    async def capture_dm(user_id, text, reply_markup=None, **kwargs):
+        sent.append({"reply_markup": reply_markup})
+        return 1
+
+    with (
+        patch("app.bot.commands.answer_callback_query", AsyncMock()),
+        patch("app.bot.commands.edit_dm", AsyncMock(return_value=True)),
+        patch("app.bot.commands.send_dm", side_effect=capture_dm),
+    ):
+        from app.bot.commands import handle_update
+        await handle_update(db, _make_callback(111, "onb:skip:quiet"))
+
+    reply_keyboards = [
+        msg for msg in sent
+        if msg.get("reply_markup", {}).get("keyboard") == [[{"text": "☰ Меню"}]]
+    ]
+    assert len(reply_keyboards) == 1

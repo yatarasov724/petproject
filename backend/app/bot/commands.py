@@ -120,7 +120,7 @@ def _sector_badge(count: int, total: int) -> str:
     return f"{count}/{total}"
 
 
-def _build_keyboard(subscribed: set[str], open_sector: int = -1) -> dict:
+def _build_keyboard(subscribed: set[str], open_sector: int = -1, done_callback: str = "done") -> dict:
     """Accordion keyboard: sectors collapse/expand in place."""
     rows = []
     for idx, (sector_name, tickers) in enumerate(_SECTORS):
@@ -154,7 +154,7 @@ def _build_keyboard(subscribed: set[str], open_sector: int = -1) -> dict:
         {"text": "✅ Выбрать всё", "callback_data": "all_on"},
         {"text": "🗑 Снять всё",   "callback_data": "all_off"},
     ])
-    rows.append([{"text": "✔️ Готово", "callback_data": "done"}])
+    rows.append([{"text": "✔️ Готово", "callback_data": done_callback}])
     return {"inline_keyboard": rows}
 
 
@@ -276,6 +276,83 @@ def _build_quiet_keyboard(current_from: int | None, current_to: int | None) -> d
     }
 
 
+# ── Onboarding wizard ─────────────────────────────────────────────────────────
+
+def _onb_step2_text() -> str:
+    return (
+        "📋 *Шаг 1 из 3 — Портфель*\n\n"
+        "Выбери тикеры для личных алертов\\.\n"
+        "Когда выйдет важная новость — сразу напишу\\."
+    )
+
+
+def _onb_step3_text() -> str:
+    return (
+        "📊 *Шаг 2 из 3 — Порог важности*\n\n"
+        "Каждой новости я ставлю оценку от 0 до 100 — насколько она важна для рынка\\.\n\n"
+        "• 10 — много новостей, в том числе мелкие\n"
+        "• 30 — только заметные события \\(рекомендую\\)\n"
+        "• 50 — только крупные: санкции, решения ЦБ, отчёты"
+    )
+
+
+def _build_onb_score_keyboard() -> dict:
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "10",    "callback_data": "onb:score:10"},
+                {"text": "20",    "callback_data": "onb:score:20"},
+                {"text": "✅ 30", "callback_data": "onb:score:30"},
+                {"text": "50",    "callback_data": "onb:score:50"},
+                {"text": "70",    "callback_data": "onb:score:70"},
+            ],
+            [{"text": "Пропустить →", "callback_data": "onb:skip:score"}],
+        ]
+    }
+
+
+def _onb_step4_text() -> str:
+    return (
+        "🌙 *Шаг 3 из 3 — Тихие часы*\n\n"
+        "Алерты ночью? В тихие часы уведомления не придут \\(время UTC\\)\\."
+    )
+
+
+def _build_onb_quiet_keyboard() -> dict:
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "Выкл",  "callback_data": "onb:quiet:off"},
+                {"text": "22–08", "callback_data": "onb:quiet:22:8"},
+                {"text": "23–08", "callback_data": "onb:quiet:23:8"},
+                {"text": "23–09", "callback_data": "onb:quiet:23:9"},
+            ],
+            [{"text": "Пропустить →", "callback_data": "onb:skip:quiet"}],
+        ]
+    }
+
+
+def _onb_step5_text(n_tickers: int, score: int, quiet_from: int | None, quiet_to: int | None) -> str:
+    n_str     = _md_escape(str(n_tickers))
+    score_str = _md_escape(str(score))
+    if quiet_from is not None and quiet_to is not None:
+        quiet_str = _md_escape(f"{quiet_from:02d}:00–{quiet_to:02d}:00 UTC")
+    else:
+        quiet_str = "выкл"
+    return (
+        "🎉 *Всё готово\\!*\n\n"
+        f"Подписан на *{n_str}* тикеров · Порог: *{score_str}* · Тихие часы: *{quiet_str}*\n\n"
+        "Теперь я буду присылать важные новости по твоим акциям\\.\n"
+        "Управляй ботом через кнопку *☰ Меню* внизу\\."
+    )
+
+
+_ONB_QUIET_CALLBACKS: frozenset[str] = frozenset({
+    "onb:skip:quiet", "onb:quiet:off",
+    "onb:quiet:22:8", "onb:quiet:23:8", "onb:quiet:23:9",
+})
+
+
 def _get_internal_user_id(db: DBConnection, telegram_id: int) -> int | None:
     row = queries.get_user(db, telegram_id)
     return row["id"] if row else None
@@ -387,6 +464,69 @@ async def _handle_callback(db: DBConnection, cbq: dict) -> None:
     msg_id  = message.get("message_id")
 
     subscribed = set(queries.get_user_tickers(db, user_id))
+
+    # ── Onboarding wizard ─────────────────────────────────────────────────────
+
+    # onb:start — show step 2 (portfolio keyboard with onb:2 done button)
+    if data == "onb:start":
+        await answer_callback_query(cbq_id)
+        await edit_dm(chat_id, msg_id, _onb_step2_text().split("\n")[0],
+                      reply_markup={"inline_keyboard": []})
+        await send_dm(user_id, _onb_step2_text(),
+                      reply_markup=_build_keyboard(subscribed, done_callback="onb:2"))
+        return
+
+    # onb:2 — tickers saved via t: callbacks; show step 3 (score)
+    if data == "onb:2":
+        await answer_callback_query(cbq_id)
+        await edit_dm(chat_id, msg_id, _onb_step2_text().split("\n")[0],
+                      reply_markup={"inline_keyboard": []})
+        await send_dm(user_id, _onb_step3_text(), reply_markup=_build_onb_score_keyboard())
+        return
+
+    # onb:score:{v} or onb:skip:score — save score (or keep default), show step 4
+    if data.startswith("onb:score:") or data == "onb:skip:score":
+        await answer_callback_query(cbq_id)
+        await edit_dm(chat_id, msg_id, _onb_step3_text().split("\n")[0],
+                      reply_markup={"inline_keyboard": []})
+        if data.startswith("onb:score:"):
+            score = int(data.split(":")[2])
+            internal_id = _get_internal_user_id(db, user_id)
+            if internal_id:
+                s = queries.get_user_settings(db, internal_id)
+                queries.save_user_settings(
+                    db, internal_id,
+                    min_score=score,
+                    quiet_from=s["quiet_from"],
+                    quiet_to=s["quiet_to"],
+                )
+        await send_dm(user_id, _onb_step4_text(), reply_markup=_build_onb_quiet_keyboard())
+        return
+
+    # onb:quiet:* or onb:skip:quiet — save quiet hours (if any), show step 5
+    if data in _ONB_QUIET_CALLBACKS:
+        await answer_callback_query(cbq_id)
+        await edit_dm(chat_id, msg_id, _onb_step4_text().split("\n")[0],
+                      reply_markup={"inline_keyboard": []})
+        internal_id = _get_internal_user_id(db, user_id)
+        if internal_id and data.startswith("onb:quiet:") and data != "onb:quiet:off":
+            parts = data.split(":")
+            qf, qt = int(parts[2]), int(parts[3])
+            s = queries.get_user_settings(db, internal_id)
+            queries.save_user_settings(
+                db, internal_id,
+                min_score=s["min_score"],
+                quiet_from=qf,
+                quiet_to=qt,
+            )
+        tickers = queries.get_user_tickers(db, user_id)
+        s = queries.get_user_settings(db, internal_id) if internal_id else queries._SETTINGS_DEFAULTS
+        await send_dm(
+            user_id,
+            _onb_step5_text(len(tickers), s["min_score"], s["quiet_from"], s["quiet_to"]),
+            reply_markup=_REPLY_KEYBOARD,
+        )
+        return
 
     # s:{idx}:{current_open} — toggle accordion
     if data.startswith("s:"):
