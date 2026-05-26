@@ -316,10 +316,47 @@ async def handle_update(db: DBConnection, update: dict) -> None:
     first_name = from_data.get("first_name", "")
     queries.upsert_user(db, user_id, from_data.get("username"), first_name)
 
+    # ── Reply keyboard shortcut ───────────────────────────────────────────────
+    if text == "☰ Меню":
+        await _send_menu(user_id, is_admin=user_id in ADMIN_USER_IDS)
+        logger.info(
+            "bot command handled",
+            extra={"event": "bot_command", "user_id": user_id, "cmd": "menu"},
+        )
+        return
+
     cmd = text.split()[0].split("@")[0]  # strip @botusername suffix
 
     if cmd == "/start":
-        await send_dm(user_id, _welcome(first_name))
+        tickers = queries.get_user_tickers(db, user_id)
+        if tickers:
+            # Returning user — show welcome + reply keyboard + inline menu
+            tickers_str = " · ".join(f"\\${_md_escape(t)}" for t in tickers)
+            welcome_back = (
+                f"С возвращением, {_md_escape(first_name)}\\!\n\n"
+                f"Твой портфель: {tickers_str}"
+            )
+            await send_dm(user_id, welcome_back, reply_markup=_REPLY_KEYBOARD)
+            await _send_menu(user_id, is_admin=user_id in ADMIN_USER_IDS)
+        else:
+            # New user — wizard step 1
+            name = _md_escape(first_name)
+            greeting = f"Привет, {name}\\!" if name else "Привет\\!"
+            text = (
+                f"{greeting} Я *MOEX\\.news* — бот для инвесторов\\.\n\n"
+                "📡 Слежу за 15\\+ источниками и присылаю важные новости "
+                "по российскому рынку прямо в личку\\.\n\n"
+                "Настроим бота под тебя — займёт 1 минуту\\."
+            )
+            await send_dm(
+                user_id,
+                text,
+                reply_markup={
+                    "inline_keyboard": [[
+                        {"text": "Начать настройку 🚀", "callback_data": "onb:start"}
+                    ]]
+                },
+            )
 
     elif cmd == "/portfolio":
         subscribed = set(queries.get_user_tickers(db, user_id))
@@ -339,10 +376,13 @@ async def handle_update(db: DBConnection, update: dict) -> None:
     elif cmd == "/calendar":
         await _handle_calendar(db, user_id)
 
+    elif cmd == "/help":
+        await send_dm(user_id, _help_text())
+
     else:
         await send_dm(
             user_id,
-            "Команды: */portfolio*, */calendar*, */settings*\\.",
+            "Команды: */portfolio*, */calendar*, */settings*, */help*\\.",
         )
 
     logger.info(
