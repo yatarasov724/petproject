@@ -426,7 +426,7 @@ async def handle_update(db: DBConnection, update: dict) -> None:
 
     elif cmd == "/settings":
         internal_id = _get_internal_user_id(db, user_id)
-        s = queries.get_user_settings(db, internal_id) if internal_id else queries._SETTINGS_DEFAULTS
+        s = queries.get_user_settings(db, internal_id) if internal_id else queries.DEFAULT_SETTINGS
         await send_dm(user_id, _settings_header(s), reply_markup=_build_settings_keyboard())
 
     elif cmd == "/status":
@@ -456,12 +456,15 @@ async def handle_update(db: DBConnection, update: dict) -> None:
 # ── callback handler ──────────────────────────────────────────────────────────
 
 async def _handle_callback(db: DBConnection, cbq: dict) -> None:
-    cbq_id  = cbq["id"]
-    data    = cbq.get("data", "")
-    user_id = cbq["from"]["id"]
-    message = cbq.get("message", {})
-    chat_id = message.get("chat", {}).get("id", user_id)
-    msg_id  = message.get("message_id")
+    cbq_id    = cbq["id"]
+    data      = cbq.get("data", "")
+    from_data = cbq["from"]
+    user_id   = from_data["id"]
+    message   = cbq.get("message", {})
+    chat_id   = message.get("chat", {}).get("id", user_id)
+    msg_id    = message.get("message_id")
+
+    queries.upsert_user(db, user_id, from_data.get("username"), from_data.get("first_name", ""))
 
     subscribed = set(queries.get_user_tickers(db, user_id))
 
@@ -520,7 +523,7 @@ async def _handle_callback(db: DBConnection, cbq: dict) -> None:
                 quiet_to=qt,
             )
         tickers = queries.get_user_tickers(db, user_id)
-        s = queries.get_user_settings(db, internal_id) if internal_id else queries._SETTINGS_DEFAULTS
+        s = queries.get_user_settings(db, internal_id) if internal_id else queries.DEFAULT_SETTINGS
         await send_dm(
             user_id,
             _onb_step5_text(len(tickers), s["min_score"], s["quiet_from"], s["quiet_to"]),
@@ -622,7 +625,7 @@ async def _handle_settings_callback(
     internal_id = _get_internal_user_id(db, user_id)
 
     def _s() -> Any:
-        return queries.get_user_settings(db, internal_id) if internal_id else queries._SETTINGS_DEFAULTS
+        return queries.get_user_settings(db, internal_id) if internal_id else queries.DEFAULT_SETTINGS
 
     # cfg:main — re-render main menu
     if data == "cfg:main":
