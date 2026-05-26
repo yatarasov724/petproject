@@ -191,6 +191,54 @@ _QUIET_PRESETS: list[tuple[str, tuple[int, int] | None]] = [
     ("23–09", (23, 9)),
 ]
 
+# ── Reply keyboard (persistent bottom button) ─────────────────────────────────
+
+_REPLY_KEYBOARD: dict = {
+    "keyboard":        [[{"text": "☰ Меню"}]],
+    "resize_keyboard": True,
+    "is_persistent":   True,
+}
+
+# ── Main menu ─────────────────────────────────────────────────────────────────
+
+def _build_main_menu_keyboard(is_admin: bool = False) -> dict:
+    rows = [
+        [
+            {"text": "📋 Портфель",  "callback_data": "menu:portfolio"},
+            {"text": "📅 Календарь", "callback_data": "menu:calendar"},
+        ],
+        [
+            {"text": "⚙️ Настройки", "callback_data": "menu:settings"},
+            {"text": "ℹ️ Помощь",    "callback_data": "menu:help"},
+        ],
+    ]
+    if is_admin:
+        rows.append([{"text": "📊 Статус", "callback_data": "menu:status"}])
+    return {"inline_keyboard": rows}
+
+
+def _help_text() -> str:
+    return (
+        "ℹ️ *MOEX\\.news — справка*\n\n"
+        "📋 *Портфель* — /portfolio\n"
+        "Выбери тикеры \\($SBER, $GAZP\\.\\.\\.\\)\\. Когда выйдет важная новость — получишь личный алерт\\.\n\n"
+        "📅 *Календарь* — /calendar\n"
+        "Ближайшие дивиденды, отчёты и оферты по твоим тикерам на 30 дней вперёд\\.\n\n"
+        "⚙️ *Настройки* — /settings\n"
+        "Порог важности \\(фильтр новостей\\) и тихие часы\\.\n\n"
+        "📡 *Канал*\n"
+        "Все значимые новости публикуются в общем канале\\."
+    )
+
+
+async def _send_menu(user_id: int, is_admin: bool = False) -> None:
+    """Send the main inline menu to a user."""
+    await send_dm(
+        user_id,
+        "📊 *MOEX\\.news*",
+        reply_markup=_build_main_menu_keyboard(is_admin),
+    )
+
 
 def _settings_header(s: Any) -> str:
     score = s["min_score"]

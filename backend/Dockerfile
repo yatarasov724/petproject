@@ -25,3 +25,9 @@ EXPOSE 8000
 
 # PORT is injected by Railway (and most other PaaS). Falls back to 8000 locally.
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
+
+# Dev/test dependencies and test sources (for CI and TDD workflows)
+COPY requirements-dev.txt .
+RUN pip install --no-cache-dir -r requirements-dev.txt
+
+COPY tests/ ./tests/
