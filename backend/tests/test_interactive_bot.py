@@ -45,6 +45,11 @@ def test_build_main_menu_keyboard_admin():
     kb = _build_main_menu_keyboard(is_admin=True)
     all_data = {btn["callback_data"] for row in kb["inline_keyboard"] for btn in row}
     assert "menu:status" in all_data
+    # Standard buttons must still be present for admin
+    assert "menu:portfolio" in all_data
+    assert "menu:calendar" in all_data
+    assert "menu:settings" in all_data
+    assert "menu:help" in all_data
 
 
 def test_help_text_contains_sections():
@@ -60,3 +65,26 @@ def test_reply_keyboard_constant_structure():
     assert "keyboard" in _REPLY_KEYBOARD
     assert _REPLY_KEYBOARD["keyboard"] == [[{"text": "☰ Меню"}]]
     assert _REPLY_KEYBOARD.get("resize_keyboard") is True
+    assert _REPLY_KEYBOARD.get("is_persistent") is True
+
+
+@pytest.mark.asyncio
+async def test_send_menu_calls_send_dm_with_inline_keyboard(db):
+    """_send_menu() calls send_dm with the inline menu keyboard."""
+    sent: list[dict] = []
+
+    async def capture_dm(user_id, text, reply_markup=None, **kwargs):
+        sent.append({"user_id": user_id, "text": text, "reply_markup": reply_markup})
+        return 1
+
+    with patch("app.bot.commands.send_dm", side_effect=capture_dm):
+        from app.bot.commands import _send_menu
+        await _send_menu(555, is_admin=False)
+
+    assert len(sent) == 1
+    assert sent[0]["user_id"] == 555
+    kb = sent[0]["reply_markup"]
+    assert kb is not None
+    all_data = {btn["callback_data"] for row in kb["inline_keyboard"] for btn in row}
+    assert "menu:portfolio" in all_data
+    assert "menu:status" not in all_data  # not admin
