@@ -190,4 +190,8 @@ async def test_help_command_sends_help_text(db):
         await handle_update(db, _make_update(444, "/help"))
 
     assert len(sent_texts) == 1
-    assert "portfolio" in sent_texts[0].lower() or "портфель" in sent_texts[0].lower()
+    text = sent_texts[0]
+    # Must contain all command references
+    assert "/portfolio" in text
+    assert "/calendar" in text
+    assert "/settings" in text

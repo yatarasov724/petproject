@@ -41,21 +41,6 @@ def _md_escape(text: str) -> str:
     return text
 
 
-def _welcome(first_name: str) -> str:
-    name = _md_escape(first_name)
-    greeting = f"Привет, {name}\\!" if name else "Привет\\!"
-    return (
-        f"{greeting} Я *MOEX\\.news* — бот для инвесторов\\.\n\n"
-        "📡 Слежу за 15\\+ источниками \\(ТАСС, Интерфакс, Ведомости и др\\.\\) "
-        "и присылаю важные новости по российскому рынку\\.\n\n"
-        "Что умею:\n"
-        "• */portfolio* — выбрать тикеры и получать личные алерты\n"
-        "• */calendar* — ближайшие события по портфелю на 30 дней\n"
-        "• */settings* — настроить порог важности и тихие часы\n\n"
-        "Выберите тикеры через */portfolio* и получайте алерты в личку\\."
-    )
-
-
 async def _handle_status(user_id: int) -> None:
     """Send pipeline health metrics to an admin user."""
     from app.core import metrics as _metrics
@@ -342,7 +327,7 @@ async def handle_update(db: DBConnection, update: dict) -> None:
             # New user — wizard step 1
             name = _md_escape(first_name)
             greeting = f"Привет, {name}\\!" if name else "Привет\\!"
-            text = (
+            body = (
                 f"{greeting} Я *MOEX\\.news* — бот для инвесторов\\.\n\n"
                 "📡 Слежу за 15\\+ источниками и присылаю важные новости "
                 "по российскому рынку прямо в личку\\.\n\n"
@@ -350,7 +335,7 @@ async def handle_update(db: DBConnection, update: dict) -> None:
             )
             await send_dm(
                 user_id,
-                text,
+                body,
                 reply_markup={
                     "inline_keyboard": [[
                         {"text": "Начать настройку 🚀", "callback_data": "onb:start"}
