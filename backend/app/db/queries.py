@@ -1277,3 +1277,21 @@ def get_recent_clusters(db: "DBConnection", limit: int = 20) -> list[dict]:
         LIMIT %s
     """, (limit,))
     return [dict(row) for row in cur.fetchall()]
+
+
+def get_cluster_by_id(db: DBConnection, cluster_id: int) -> Optional[dict]:
+    """Return cluster row or None if not found."""
+    row = db.execute(
+        "SELECT id, canonical_title, tickers FROM event_clusters WHERE id = %s",
+        (cluster_id,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def update_cluster_tickers(db: DBConnection, cluster_id: int, tickers: str) -> None:
+    """Update tickers for a cluster. Empty string clears the column (sets NULL)."""
+    db.execute(
+        "UPDATE event_clusters SET tickers = %s WHERE id = %s",
+        (tickers or None, cluster_id),
+    )
+    db.commit()

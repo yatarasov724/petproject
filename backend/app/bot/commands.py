@@ -66,6 +66,79 @@ async def _handle_status(user_id: int) -> None:
     await send_dm(user_id, text)
 
 
+async def _handle_fix(db: DBConnection, user_id: int, args: list[str]) -> None:
+    """
+    /fix <cluster_id> <TICKER[,TICKER2]>
+    Admin-only. Updates the cluster's tickers in DB.
+    Usage examples:
+      /fix 690 MGKL
+      /fix 690 MGKL,SBER
+      /fix 690 ""        ← clear tickers
+    """
+    from app.ai.filter import VALID_TICKERS
+    from app.db import queries
+
+    if len(args) < 2:
+        await send_dm(
+            user_id,
+            "❌ Использование: `/fix <cluster_id> <TICKER>` или `/fix <cluster_id> \"\"`",
+        )
+        return
+
+    # Parse cluster_id
+    try:
+        cluster_id = int(args[0])
+    except ValueError:
+        await send_dm(user_id, f"❌ Неверный cluster\\_id: `{_md_escape(args[0])}`")
+        return
+
+    # Parse tickers (empty string = clear)
+    raw_tickers = args[1].strip().strip('"').strip("'")
+    if raw_tickers:
+        ticker_list = [t.strip().upper() for t in raw_tickers.split(",") if t.strip()]
+        invalid = [t for t in ticker_list if t not in VALID_TICKERS]
+        if invalid:
+            invalid_str = ", ".join(_md_escape(t) for t in invalid)
+            await send_dm(user_id, f"❌ Неизвестные тикеры: `{invalid_str}`")
+            return
+        new_tickers = ",".join(ticker_list)
+    else:
+        new_tickers = ""
+
+    # Check cluster exists
+    cluster = queries.get_cluster_by_id(db, cluster_id)
+    if cluster is None:
+        await send_dm(user_id, f"❌ Кластер `\\#{cluster_id}` не найден")
+        return
+
+    old_tickers = cluster["tickers"] or "(нет)"
+    queries.update_cluster_tickers(db, cluster_id, new_tickers)
+
+    # Confirm to admin
+    old_display   = _md_escape(old_tickers)
+    new_display   = _md_escape(new_tickers or "(нет)")
+    title_display = _md_escape(cluster["canonical_title"][:80])
+    await send_dm(
+        user_id,
+        f"✅ *Кластер \\#{cluster_id}* обновлён\n\n"
+        f"Новость: _{title_display}_\n\n"
+        f"Было: `{old_display}`\n"
+        f"Стало: `{new_display}`",
+    )
+
+    logger.info(
+        "fix command: cluster_id=%d %s → %s by user_id=%d",
+        cluster_id, old_tickers, new_tickers, user_id,
+        extra={
+            "event":      "fix_ticker",
+            "cluster_id": cluster_id,
+            "old":        old_tickers,
+            "new":        new_tickers,
+            "admin":      user_id,
+        },
+    )
+
+
 async def _handle_calendar(db: DBConnection, user_id: int) -> None:
     """Handle /calendar command — upcoming events for the next 30 days."""
     today = datetime.now(timezone.utc).date()
@@ -434,6 +507,13 @@ async def handle_update(db: DBConnection, update: dict) -> None:
     elif cmd == "/status":
         if user_id in ADMIN_USER_IDS:
             await _handle_status(user_id)
+        else:
+            await send_dm(user_id, "⛔ Нет доступа\\.")
+
+    elif cmd == "/fix":
+        if user_id in ADMIN_USER_IDS:
+            args = text.split()[1:]
+            await _handle_fix(db, user_id, args)
         else:
             await send_dm(user_id, "⛔ Нет доступа\\.")
 
