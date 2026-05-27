@@ -45,6 +45,7 @@ from app.pipeline.normalizer import RawArticle
 from app.pipeline.price_history import capture_price_snapshot, get_correlations
 from app.pipeline.publish_decision import decide, Decision, PublishDecision, COOLDOWN_HOURS
 from app.pipeline.relevance import is_russia_relevant
+from app.pipeline.ticker_validator import validate_tickers
 from app.telegram import client as tg
 from app.telegram.formatter import format_message
 
@@ -324,6 +325,13 @@ async def _run(db: DBConnection, article: RawArticle) -> ArticleResult:
     # Fire-and-forget: publish base message without waiting for AI (~0ms delay),
     # then _ai_enrich() edits the message in place once the LLM responds.
     # Filtering is handled by scorer + is_russia_relevant; AI is now decorative.
+    # Валидация тикеров: убираем те, чьи ключевые слова отсутствуют в заголовке.
+    # Это предотвращает публикацию тикеров, попавших в кластер через загрязнение.
+    safe_tickers = validate_tickers(cluster["tickers"], cluster["canonical_title"])
+    if safe_tickers != (cluster["tickers"] or ""):
+        cluster = dict(cluster)
+        cluster["tickers"] = safe_tickers or None
+
     correlations = get_correlations(db, score_result.event_type.value, cluster["tickers"] or "")
     if correlations:
         logger.info(
@@ -361,6 +369,9 @@ async def _run(db: DBConnection, article: RawArticle) -> ArticleResult:
             asyncio.create_task(
                 _ai_enrich(article.title, article.content, cluster, score_result, pub, msg_id, correlations)
             )
+        asyncio.create_task(
+            _detect_unknown_company(cluster["canonical_title"], bool(cluster["tickers"]))
+        )
         if cluster["tickers"]:
             asyncio.create_task(
                 _notify_portfolio(cluster["tickers"], cluster["canonical_title"], cluster["id"])
@@ -377,6 +388,49 @@ async def _run(db: DBConnection, article: RawArticle) -> ArticleResult:
         outcome, article.source_name, short,
         score=score_result.score, cluster_id=cluster["id"],
     )
+
+
+import re as _re
+
+# Паттерны, указывающие на упоминание конкретной компании в дивидендной/корпоративной новости.
+# Если компания не распознана (нет тикера) — шлём alert в ops-чат.
+_COMPANY_PATTERNS = [
+    # "СД МГКЛ рекомендовал", "Совет директоров НМТП объявил"
+    _re.compile(r'\bС[Дд]\.?\s+([А-ЯЁ]{2,6})\b'),
+    # "МГКЛ: ДИВИДЕНДЫ =", "НМТП: ДИВИДЕНДЫ"
+    _re.compile(r'\b([А-ЯЁ]{2,6})[:\s]+ДИВИДЕНДЫ'),
+    # "[А-ЯЁ]{2,6} - ДИВИДЕНДЫ" (формат Smartlab)
+    _re.compile(r'[-–]\s*([А-ЯЁ]{2,6})\s*[-–:]\s*ДИВИДЕНДЫ'),
+]
+
+
+async def _detect_unknown_company(title: str, has_tickers: bool) -> None:
+    """
+    If title matches a 'company dividend/earnings' pattern but no ticker was found,
+    send an ops alert so the admin can add the ticker to the keyword list.
+    Never raises.
+    """
+    if has_tickers:
+        return  # тикер уже есть — всё хорошо
+    try:
+        for pattern in _COMPANY_PATTERNS:
+            m = pattern.search(title)
+            if m:
+                abbr = m.group(1)
+                from app.core.alerting import send_ops
+                await send_ops(
+                    f"⚠️ Незнакомая компания: «{abbr}»\n"
+                    f"Добавьте тикер в filter.py:\n"
+                    f"«{title[:100]}»"
+                )
+                logger.info(
+                    "unknown_company_detected abbr=%s title=%.80s",
+                    abbr, title,
+                    extra={"event": "unknown_company", "abbr": abbr},
+                )
+                return  # один алерт за статью
+    except Exception:
+        logger.warning("unknown company detection failed", exc_info=True)
 
 
 async def _ai_enrich(
