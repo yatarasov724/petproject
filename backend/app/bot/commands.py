@@ -130,16 +130,18 @@ def _build_keyboard(subscribed: set[str], open_sector: int = -1, done_callback: 
 
         arrow = "▼" if is_open else "▶"
         badge = _sector_badge(count, total)
+        # Encode done_callback into every interactive button so keyboard rebuilds preserve it
+        dc = done_callback
         rows.append([{
             "text": f"{arrow} {sector_name}  {badge}",
-            "callback_data": f"s:{idx}:{open_sector}",
+            "callback_data": f"s:{idx}:{open_sector}:{dc}",
         }])
 
         if is_open:
             row: list[dict] = []
             for ticker in tickers:
                 label = f"✅ {ticker}" if ticker in subscribed else ticker
-                row.append({"text": label, "callback_data": f"t:{ticker}:{idx}"})
+                row.append({"text": label, "callback_data": f"t:{ticker}:{idx}:{dc}"})
                 if len(row) == _TICKERS_PER_ROW:
                     rows.append(row)
                     row = []
@@ -148,11 +150,11 @@ def _build_keyboard(subscribed: set[str], open_sector: int = -1, done_callback: 
 
             all_selected = all(t in subscribed for t in tickers)
             sa_label = "🗑 Снять сектор" if all_selected else "✅ Выбрать сектор"
-            rows.append([{"text": sa_label, "callback_data": f"sa:{idx}:{idx}"}])
+            rows.append([{"text": sa_label, "callback_data": f"sa:{idx}:{idx}:{dc}"}])
 
     rows.append([
-        {"text": "✅ Выбрать всё", "callback_data": "all_on"},
-        {"text": "🗑 Снять всё",   "callback_data": "all_off"},
+        {"text": "✅ Выбрать всё", "callback_data": f"all_on:{done_callback}"},
+        {"text": "🗑 Снять всё",   "callback_data": f"all_off:{done_callback}"},
     ])
     rows.append([{"text": "✔️ Готово", "callback_data": done_callback}])
     return {"inline_keyboard": rows}
@@ -204,7 +206,7 @@ def _build_main_menu_keyboard(is_admin: bool = False) -> dict:
 
 def _help_text() -> str:
     return (
-        "ℹ️ *MOEX\\.news — справка*\n\n"
+        "ℹ️ *Beep — справка*\n\n"
         "📋 *Портфель* — /portfolio\n"
         "Выбери тикеры \\($SBER, $GAZP\\.\\.\\.\\)\\. Когда выйдет важная новость — получишь личный алерт\\.\n\n"
         "📅 *Календарь* — /calendar\n"
@@ -220,7 +222,7 @@ async def _send_menu(user_id: int, is_admin: bool = False) -> None:
     """Send the main inline menu to a user."""
     await send_dm(
         user_id,
-        "📊 *MOEX\\.news*",
+        "📊 *Beep*",
         reply_markup=_build_main_menu_keyboard(is_admin),
     )
 
@@ -405,7 +407,7 @@ async def handle_update(db: DBConnection, update: dict) -> None:
             name = _md_escape(first_name)
             greeting = f"Привет, {name}\\!" if name else "Привет\\!"
             body = (
-                f"{greeting} Я *MOEX\\.news* — бот для инвесторов\\.\n\n"
+                f"{greeting} Я *Beep* — бот для инвесторов\\.\n\n"
                 "📡 Слежу за 15\\+ источниками и присылаю важные новости "
                 "по российскому рынку прямо в личку\\.\n\n"
                 "Настроим бота под тебя — займёт 1 минуту\\."
@@ -473,8 +475,6 @@ async def _handle_callback(db: DBConnection, cbq: dict) -> None:
     # onb:start — show step 2 (portfolio keyboard with onb:2 done button)
     if data == "onb:start":
         await answer_callback_query(cbq_id)
-        await edit_dm(chat_id, msg_id, _onb_step2_text().split("\n")[0],
-                      reply_markup={"inline_keyboard": []})
         await send_dm(user_id, _onb_step2_text(),
                       reply_markup=_build_keyboard(subscribed, done_callback="onb:2"))
         return
@@ -561,20 +561,22 @@ async def _handle_callback(db: DBConnection, cbq: dict) -> None:
             await _handle_status(user_id)
         return
 
-    # s:{idx}:{current_open} — toggle accordion
+    # s:{idx}:{current_open}:{done_cb} — toggle accordion
     if data.startswith("s:"):
         await answer_callback_query(cbq_id)
         parts = data.split(":")
         idx, current_open = int(parts[1]), int(parts[2])
+        done_cb = ":".join(parts[3:]) if len(parts) > 3 else "done"
         new_open = -1 if idx == current_open else idx
         header = _keyboard_header(len(subscribed))
-        await edit_dm(chat_id, msg_id, header, reply_markup=_build_keyboard(subscribed, new_open))
+        await edit_dm(chat_id, msg_id, header, reply_markup=_build_keyboard(subscribed, new_open, done_callback=done_cb))
         return
 
-    # t:{ticker}:{open_sector} — toggle individual ticker (single SQL op)
+    # t:{ticker}:{open_sector}:{done_cb} — toggle individual ticker
     if data.startswith("t:"):
         parts = data.split(":")
         ticker, open_sector = parts[1], int(parts[2])
+        done_cb = ":".join(parts[3:]) if len(parts) > 3 else "done"
         adding = ticker not in subscribed
         await answer_callback_query(cbq_id)
         queries.toggle_user_ticker(db, user_id, ticker, adding)
@@ -583,13 +585,14 @@ async def _handle_callback(db: DBConnection, cbq: dict) -> None:
         else:
             subscribed.discard(ticker)
         header = _keyboard_header(len(subscribed))
-        await edit_dm(chat_id, msg_id, header, reply_markup=_build_keyboard(subscribed, open_sector))
+        await edit_dm(chat_id, msg_id, header, reply_markup=_build_keyboard(subscribed, open_sector, done_callback=done_cb))
         return
 
-    # sa:{idx}:{open_sector} — toggle entire sector
+    # sa:{idx}:{open_sector}:{done_cb} — toggle entire sector
     if data.startswith("sa:"):
         parts = data.split(":")
         idx, open_sector = int(parts[1]), int(parts[2])
+        done_cb = ":".join(parts[3:]) if len(parts) > 3 else "done"
         _, sector_tickers = _SECTORS[idx]
         all_selected = all(t in subscribed for t in sector_tickers)
         await answer_callback_query(cbq_id)
@@ -599,23 +602,27 @@ async def _handle_callback(db: DBConnection, cbq: dict) -> None:
             subscribed |= set(sector_tickers)
         queries.set_user_tickers(db, user_id, list(subscribed))
         header = _keyboard_header(len(subscribed))
-        await edit_dm(chat_id, msg_id, header, reply_markup=_build_keyboard(subscribed, open_sector))
+        await edit_dm(chat_id, msg_id, header, reply_markup=_build_keyboard(subscribed, open_sector, done_callback=done_cb))
         return
 
-    if data == "all_on":
+    # all_on:{done_cb} — select all tickers
+    if data == "all_on" or data.startswith("all_on:"):
+        done_cb = data.split(":", 1)[1] if ":" in data else "done"
         await answer_callback_query(cbq_id)
         all_tickers = [t for _, tickers in _SECTORS for t in tickers]
         queries.set_user_tickers(db, user_id, all_tickers)
         subscribed = set(all_tickers)
         header = _keyboard_header(len(subscribed))
-        await edit_dm(chat_id, msg_id, header, reply_markup=_build_keyboard(subscribed))
+        await edit_dm(chat_id, msg_id, header, reply_markup=_build_keyboard(subscribed, done_callback=done_cb))
         return
 
-    if data == "all_off":
+    # all_off:{done_cb} — deselect all tickers
+    if data == "all_off" or data.startswith("all_off:"):
+        done_cb = data.split(":", 1)[1] if ":" in data else "done"
         await answer_callback_query(cbq_id)
         queries.set_user_tickers(db, user_id, [])
         header = _keyboard_header(0)
-        await edit_dm(chat_id, msg_id, header, reply_markup=_build_keyboard(set()))
+        await edit_dm(chat_id, msg_id, header, reply_markup=_build_keyboard(set(), done_callback=done_cb))
         return
 
     if data == "done":
