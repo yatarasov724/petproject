@@ -85,3 +85,65 @@ def test_multiple_articles_accumulate(db):
     assert c2 is not None
     assert c2["tickers"] is not None
     assert "GAZP" in c2["tickers"]
+
+
+# ── Регрессионные тесты (баги 2026-05-26) ───────────────────────────────────
+
+def test_mgkl_returns_mgkl():
+    """МГКЛ должен давать MGKL, а не MTSS/FEES/AFLT."""
+    assert extract_tickers("СД МГКЛ рекомендовал дивиденды за 2025 год") == ["MGKL"]
+
+
+def test_mts_bank_returns_mtsb_not_mtss():
+    """МТС-Банк — это банк, не оператор. Тикер MTSB, не MTSS."""
+    assert extract_tickers("СД МТС-Банк рекомендовал дивиденды") == ["MTSB"]
+    assert extract_tickers("Совет директоров МТС банка объявил дивиденды") == ["MTSB"]
+
+
+def test_mts_operator_still_works():
+    """МТС (оператор связи) продолжает давать MTSS."""
+    result = extract_tickers("МТС запустил новый тарифный план")
+    assert result == ["MTSS"]
+
+
+def test_ozon_pharma_returns_ozph_not_ozon():
+    """Озон Фармацевтика — не Ozon-маркетплейс."""
+    assert extract_tickers("Озон Фармацевтика выплатит дивиденды за 2025 год") == ["OZPH"]
+
+
+def test_autozone_returns_empty():
+    """AutoZone (американская компания) — не OZON."""
+    assert extract_tickers("Evercore ISI подтверждает рейтинг акций AutoZone") == []
+
+
+def test_rosseti_mr_returns_msrs_not_fees():
+    """Россети Московский регион — дочка, не головная компания."""
+    assert extract_tickers("Россети Московский регион рекомендовал дивиденды") == ["MSRS"]
+
+
+def test_russneft_returns_rnft_not_oil():
+    """Русснефть имеет собственный тикер, не LKOH/ROSN."""
+    assert extract_tickers("СД Русснефти не выплатит дивиденды по обыкновенным акциям") == ["RNFT"]
+
+
+def test_nmtp_returns_nmtp():
+    assert extract_tickers("СД НМТП рекомендовал дивиденды за 2025 год") == ["NMTP"]
+
+
+def test_ozon_cyrillic_still_works():
+    """Озон (маркетплейс) без слова фармацевтика — OZON."""
+    result = extract_tickers("Озон нарастил выручку в 2 раза")
+    assert result == ["OZON"]
+
+
+def test_oil_price_gives_commodity_tickers():
+    result = extract_tickers("Цена нефти Brent выросла до 100 долларов")
+    assert "LKOH" in result
+    assert "ROSN" in result
+
+
+def test_conflict_resolution_mtsb_wins():
+    """Если в тексте мтс банк, MTSB должен вытеснить MTSS."""
+    result = extract_tickers("Акции МТС банка выросли на 3%")
+    assert "MTSB" in result
+    assert "MTSS" not in result
