@@ -9,7 +9,7 @@ WORKDIR /app
 
 # Install Python deps first (separate layer — only rebuilds on requirements change)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --timeout 120 --retries 5 -r requirements.txt
 
 # Pre-cache the embedding model so deploys do not re-download 120 MB at runtime
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')"
@@ -25,7 +25,7 @@ EXPOSE 8000
 
 # Dev/test dependencies and test sources (for CI and TDD workflows)
 COPY requirements-dev.txt .
-RUN pip install --no-cache-dir -r requirements-dev.txt
+RUN pip install --no-cache-dir --timeout 120 --retries 5 -r requirements-dev.txt
 
 COPY tests/ ./tests/
 
