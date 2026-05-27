@@ -899,7 +899,7 @@ def get_price_correlations(
 
 # ── user_settings ─────────────────────────────────────────────────────────────
 
-_SETTINGS_DEFAULTS: dict = {"min_score": 30, "quiet_from": None, "quiet_to": None}
+DEFAULT_SETTINGS: dict = {"min_score": 30, "quiet_from": None, "quiet_to": None}
 
 
 def get_user_settings(db: DBConnection, user_id: int) -> Any:
@@ -908,7 +908,7 @@ def get_user_settings(db: DBConnection, user_id: int) -> Any:
         "SELECT * FROM user_settings WHERE user_id = %s",
         (user_id,),
     ).fetchone()
-    return row if row is not None else _SETTINGS_DEFAULTS
+    return row if row is not None else DEFAULT_SETTINGS
 
 
 def get_user_settings_by_telegram_id(db: DBConnection, telegram_id: int) -> Any:
@@ -922,7 +922,7 @@ def get_user_settings_by_telegram_id(db: DBConnection, telegram_id: int) -> Any:
         """,
         (telegram_id,),
     ).fetchone()
-    return row if row is not None else _SETTINGS_DEFAULTS
+    return row if row is not None else DEFAULT_SETTINGS
 
 
 def save_user_settings(

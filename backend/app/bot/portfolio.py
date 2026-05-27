@@ -36,7 +36,7 @@ async def notify(tickers_raw: str, canonical_title: str, cluster_id: int) -> Non
 
     tickers_line = " · ".join(f"\\${t}" for t in tickers)
     title = _esc(canonical_title)
-    text = f"🔔 *Событие по вашему портфелю*\n\n{tickers_line}\n\n{title}"
+    text = f"*{title}*\n\n{tickers_line}"
 
     for user_id in user_ids:
         msg_id = await send_dm(user_id, text)

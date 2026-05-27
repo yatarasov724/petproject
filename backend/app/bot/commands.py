@@ -41,21 +41,6 @@ def _md_escape(text: str) -> str:
     return text
 
 
-def _welcome(first_name: str) -> str:
-    name = _md_escape(first_name)
-    greeting = f"Привет, {name}\\!" if name else "Привет\\!"
-    return (
-        f"{greeting} Я *MOEX\\.news* — бот для инвесторов\\.\n\n"
-        "📡 Слежу за 15\\+ источниками \\(ТАСС, Интерфакс, Ведомости и др\\.\\) "
-        "и присылаю важные новости по российскому рынку\\.\n\n"
-        "Что умею:\n"
-        "• */portfolio* — выбрать тикеры и получать личные алерты\n"
-        "• */calendar* — ближайшие события по портфелю на 30 дней\n"
-        "• */settings* — настроить порог важности и тихие часы\n\n"
-        "Выберите тикеры через */portfolio* и получайте алерты в личку\\."
-    )
-
-
 async def _handle_status(user_id: int) -> None:
     """Send pipeline health metrics to an admin user."""
     from app.core import metrics as _metrics
@@ -135,7 +120,7 @@ def _sector_badge(count: int, total: int) -> str:
     return f"{count}/{total}"
 
 
-def _build_keyboard(subscribed: set[str], open_sector: int = -1) -> dict:
+def _build_keyboard(subscribed: set[str], open_sector: int = -1, done_callback: str = "done") -> dict:
     """Accordion keyboard: sectors collapse/expand in place."""
     rows = []
     for idx, (sector_name, tickers) in enumerate(_SECTORS):
@@ -169,7 +154,7 @@ def _build_keyboard(subscribed: set[str], open_sector: int = -1) -> dict:
         {"text": "✅ Выбрать всё", "callback_data": "all_on"},
         {"text": "🗑 Снять всё",   "callback_data": "all_off"},
     ])
-    rows.append([{"text": "✔️ Готово", "callback_data": "done"}])
+    rows.append([{"text": "✔️ Готово", "callback_data": done_callback}])
     return {"inline_keyboard": rows}
 
 
@@ -190,6 +175,54 @@ _QUIET_PRESETS: list[tuple[str, tuple[int, int] | None]] = [
     ("23–08", (23, 8)),
     ("23–09", (23, 9)),
 ]
+
+# ── Reply keyboard (persistent bottom button) ─────────────────────────────────
+
+_REPLY_KEYBOARD: dict = {
+    "keyboard":        [[{"text": "☰ Меню"}]],
+    "resize_keyboard": True,
+    "is_persistent":   True,
+}
+
+# ── Main menu ─────────────────────────────────────────────────────────────────
+
+def _build_main_menu_keyboard(is_admin: bool = False) -> dict:
+    rows = [
+        [
+            {"text": "📋 Портфель",  "callback_data": "menu:portfolio"},
+            {"text": "📅 Календарь", "callback_data": "menu:calendar"},
+        ],
+        [
+            {"text": "⚙️ Настройки", "callback_data": "menu:settings"},
+            {"text": "ℹ️ Помощь",    "callback_data": "menu:help"},
+        ],
+    ]
+    if is_admin:
+        rows.append([{"text": "📊 Статус", "callback_data": "menu:status"}])
+    return {"inline_keyboard": rows}
+
+
+def _help_text() -> str:
+    return (
+        "ℹ️ *MOEX\\.news — справка*\n\n"
+        "📋 *Портфель* — /portfolio\n"
+        "Выбери тикеры \\($SBER, $GAZP\\.\\.\\.\\)\\. Когда выйдет важная новость — получишь личный алерт\\.\n\n"
+        "📅 *Календарь* — /calendar\n"
+        "Ближайшие дивиденды, отчёты и оферты по твоим тикерам на 30 дней вперёд\\.\n\n"
+        "⚙️ *Настройки* — /settings\n"
+        "Порог важности \\(фильтр новостей\\) и тихие часы\\.\n\n"
+        "📡 *Канал*\n"
+        "Все значимые новости публикуются в общем канале\\."
+    )
+
+
+async def _send_menu(user_id: int, is_admin: bool = False) -> None:
+    """Send the main inline menu to a user."""
+    await send_dm(
+        user_id,
+        "📊 *MOEX\\.news*",
+        reply_markup=_build_main_menu_keyboard(is_admin),
+    )
 
 
 def _settings_header(s: Any) -> str:
@@ -243,6 +276,83 @@ def _build_quiet_keyboard(current_from: int | None, current_to: int | None) -> d
     }
 
 
+# ── Onboarding wizard ─────────────────────────────────────────────────────────
+
+def _onb_step2_text() -> str:
+    return (
+        "📋 *Шаг 1 из 3 — Портфель*\n\n"
+        "Выбери тикеры для личных алертов\\.\n"
+        "Когда выйдет важная новость — сразу напишу\\."
+    )
+
+
+def _onb_step3_text() -> str:
+    return (
+        "📊 *Шаг 2 из 3 — Порог важности*\n\n"
+        "Каждой новости я ставлю оценку от 0 до 100 — насколько она важна для рынка\\.\n\n"
+        "• 10 — много новостей, в том числе мелкие\n"
+        "• 30 — только заметные события \\(рекомендую\\)\n"
+        "• 50 — только крупные: санкции, решения ЦБ, отчёты"
+    )
+
+
+def _build_onb_score_keyboard() -> dict:
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "10",    "callback_data": "onb:score:10"},
+                {"text": "20",    "callback_data": "onb:score:20"},
+                {"text": "✅ 30", "callback_data": "onb:score:30"},
+                {"text": "50",    "callback_data": "onb:score:50"},
+                {"text": "70",    "callback_data": "onb:score:70"},
+            ],
+            [{"text": "Пропустить →", "callback_data": "onb:skip:score"}],
+        ]
+    }
+
+
+def _onb_step4_text() -> str:
+    return (
+        "🌙 *Шаг 3 из 3 — Тихие часы*\n\n"
+        "Алерты ночью? В тихие часы уведомления не придут \\(время UTC\\)\\."
+    )
+
+
+def _build_onb_quiet_keyboard() -> dict:
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "Выкл",  "callback_data": "onb:quiet:off"},
+                {"text": "22–08", "callback_data": "onb:quiet:22:8"},
+                {"text": "23–08", "callback_data": "onb:quiet:23:8"},
+                {"text": "23–09", "callback_data": "onb:quiet:23:9"},
+            ],
+            [{"text": "Пропустить →", "callback_data": "onb:skip:quiet"}],
+        ]
+    }
+
+
+def _onb_step5_text(n_tickers: int, score: int, quiet_from: int | None, quiet_to: int | None) -> str:
+    n_str     = _md_escape(str(n_tickers))
+    score_str = _md_escape(str(score))
+    if quiet_from is not None and quiet_to is not None:
+        quiet_str = _md_escape(f"{quiet_from:02d}:00–{quiet_to:02d}:00 UTC")
+    else:
+        quiet_str = "выкл"
+    return (
+        "🎉 *Всё готово\\!*\n\n"
+        f"Подписан на *{n_str}* тикеров · Порог: *{score_str}* · Тихие часы: *{quiet_str}*\n\n"
+        "Теперь я буду присылать важные новости по твоим акциям\\.\n"
+        "Управляй ботом через кнопку *☰ Меню* внизу\\."
+    )
+
+
+_ONB_QUIET_CALLBACKS: frozenset[str] = frozenset({
+    "onb:skip:quiet", "onb:quiet:off",
+    "onb:quiet:22:8", "onb:quiet:23:8", "onb:quiet:23:9",
+})
+
+
 def _get_internal_user_id(db: DBConnection, telegram_id: int) -> int | None:
     row = queries.get_user(db, telegram_id)
     return row["id"] if row else None
@@ -268,10 +378,47 @@ async def handle_update(db: DBConnection, update: dict) -> None:
     first_name = from_data.get("first_name", "")
     queries.upsert_user(db, user_id, from_data.get("username"), first_name)
 
+    # ── Reply keyboard shortcut ───────────────────────────────────────────────
+    if text == "☰ Меню":
+        await _send_menu(user_id, is_admin=user_id in ADMIN_USER_IDS)
+        logger.info(
+            "bot command handled",
+            extra={"event": "bot_command", "user_id": user_id, "cmd": "menu"},
+        )
+        return
+
     cmd = text.split()[0].split("@")[0]  # strip @botusername suffix
 
     if cmd == "/start":
-        await send_dm(user_id, _welcome(first_name))
+        tickers = queries.get_user_tickers(db, user_id)
+        if tickers:
+            # Returning user — show welcome + reply keyboard + inline menu
+            tickers_str = " · ".join(f"\\${_md_escape(t)}" for t in tickers)
+            welcome_back = (
+                f"С возвращением, {_md_escape(first_name)}\\!\n\n"
+                f"Твой портфель: {tickers_str}"
+            )
+            await send_dm(user_id, welcome_back, reply_markup=_REPLY_KEYBOARD)
+            await _send_menu(user_id, is_admin=user_id in ADMIN_USER_IDS)
+        else:
+            # New user — wizard step 1
+            name = _md_escape(first_name)
+            greeting = f"Привет, {name}\\!" if name else "Привет\\!"
+            body = (
+                f"{greeting} Я *MOEX\\.news* — бот для инвесторов\\.\n\n"
+                "📡 Слежу за 15\\+ источниками и присылаю важные новости "
+                "по российскому рынку прямо в личку\\.\n\n"
+                "Настроим бота под тебя — займёт 1 минуту\\."
+            )
+            await send_dm(
+                user_id,
+                body,
+                reply_markup={
+                    "inline_keyboard": [[
+                        {"text": "Начать настройку 🚀", "callback_data": "onb:start"}
+                    ]]
+                },
+            )
 
     elif cmd == "/portfolio":
         subscribed = set(queries.get_user_tickers(db, user_id))
@@ -279,7 +426,7 @@ async def handle_update(db: DBConnection, update: dict) -> None:
 
     elif cmd == "/settings":
         internal_id = _get_internal_user_id(db, user_id)
-        s = queries.get_user_settings(db, internal_id) if internal_id else queries._SETTINGS_DEFAULTS
+        s = queries.get_user_settings(db, internal_id) if internal_id else queries.DEFAULT_SETTINGS
         await send_dm(user_id, _settings_header(s), reply_markup=_build_settings_keyboard())
 
     elif cmd == "/status":
@@ -291,10 +438,13 @@ async def handle_update(db: DBConnection, update: dict) -> None:
     elif cmd == "/calendar":
         await _handle_calendar(db, user_id)
 
+    elif cmd == "/help":
+        await send_dm(user_id, _help_text())
+
     else:
         await send_dm(
             user_id,
-            "Команды: */portfolio*, */calendar*, */settings*\\.",
+            "Команды: */portfolio*, */calendar*, */settings*, */help*\\.",
         )
 
     logger.info(
@@ -306,14 +456,110 @@ async def handle_update(db: DBConnection, update: dict) -> None:
 # ── callback handler ──────────────────────────────────────────────────────────
 
 async def _handle_callback(db: DBConnection, cbq: dict) -> None:
-    cbq_id  = cbq["id"]
-    data    = cbq.get("data", "")
-    user_id = cbq["from"]["id"]
-    message = cbq.get("message", {})
-    chat_id = message.get("chat", {}).get("id", user_id)
-    msg_id  = message.get("message_id")
+    cbq_id    = cbq["id"]
+    data      = cbq.get("data", "")
+    from_data = cbq["from"]
+    user_id   = from_data["id"]
+    message   = cbq.get("message", {})
+    chat_id   = message.get("chat", {}).get("id", user_id)
+    msg_id    = message.get("message_id")
+
+    queries.upsert_user(db, user_id, from_data.get("username"), from_data.get("first_name", ""))
 
     subscribed = set(queries.get_user_tickers(db, user_id))
+
+    # ── Onboarding wizard ─────────────────────────────────────────────────────
+
+    # onb:start — show step 2 (portfolio keyboard with onb:2 done button)
+    if data == "onb:start":
+        await answer_callback_query(cbq_id)
+        await edit_dm(chat_id, msg_id, _onb_step2_text().split("\n")[0],
+                      reply_markup={"inline_keyboard": []})
+        await send_dm(user_id, _onb_step2_text(),
+                      reply_markup=_build_keyboard(subscribed, done_callback="onb:2"))
+        return
+
+    # onb:2 — tickers saved via t: callbacks; show step 3 (score)
+    if data == "onb:2":
+        await answer_callback_query(cbq_id)
+        await edit_dm(chat_id, msg_id, _onb_step2_text().split("\n")[0],
+                      reply_markup={"inline_keyboard": []})
+        await send_dm(user_id, _onb_step3_text(), reply_markup=_build_onb_score_keyboard())
+        return
+
+    # onb:score:{v} or onb:skip:score — save score (or keep default), show step 4
+    if data.startswith("onb:score:") or data == "onb:skip:score":
+        await answer_callback_query(cbq_id)
+        await edit_dm(chat_id, msg_id, _onb_step3_text().split("\n")[0],
+                      reply_markup={"inline_keyboard": []})
+        if data.startswith("onb:score:"):
+            score = int(data.split(":")[2])
+            internal_id = _get_internal_user_id(db, user_id)
+            if internal_id:
+                s = queries.get_user_settings(db, internal_id)
+                queries.save_user_settings(
+                    db, internal_id,
+                    min_score=score,
+                    quiet_from=s["quiet_from"],
+                    quiet_to=s["quiet_to"],
+                )
+        await send_dm(user_id, _onb_step4_text(), reply_markup=_build_onb_quiet_keyboard())
+        return
+
+    # onb:quiet:* or onb:skip:quiet — save quiet hours (if any), show step 5
+    if data in _ONB_QUIET_CALLBACKS:
+        await answer_callback_query(cbq_id)
+        await edit_dm(chat_id, msg_id, _onb_step4_text().split("\n")[0],
+                      reply_markup={"inline_keyboard": []})
+        internal_id = _get_internal_user_id(db, user_id)
+        if internal_id and data.startswith("onb:quiet:") and data != "onb:quiet:off":
+            parts = data.split(":")
+            qf, qt = int(parts[2]), int(parts[3])
+            s = queries.get_user_settings(db, internal_id)
+            queries.save_user_settings(
+                db, internal_id,
+                min_score=s["min_score"],
+                quiet_from=qf,
+                quiet_to=qt,
+            )
+        tickers = queries.get_user_tickers(db, user_id)
+        s = queries.get_user_settings(db, internal_id) if internal_id else queries.DEFAULT_SETTINGS
+        await send_dm(
+            user_id,
+            _onb_step5_text(len(tickers), s["min_score"], s["quiet_from"], s["quiet_to"]),
+            reply_markup=_REPLY_KEYBOARD,
+        )
+        return
+
+    # ── Main menu callbacks ───────────────────────────────────────────────────
+
+    if data == "menu:portfolio":
+        await answer_callback_query(cbq_id)
+        await send_dm(user_id, _keyboard_header(len(subscribed)), reply_markup=_build_keyboard(subscribed))
+        return
+
+    if data == "menu:calendar":
+        await answer_callback_query(cbq_id)
+        await _handle_calendar(db, user_id)
+        return
+
+    if data == "menu:settings":
+        await answer_callback_query(cbq_id)
+        internal_id = _get_internal_user_id(db, user_id)
+        s = queries.get_user_settings(db, internal_id) if internal_id else queries.DEFAULT_SETTINGS
+        await send_dm(user_id, _settings_header(s), reply_markup=_build_settings_keyboard())
+        return
+
+    if data == "menu:help":
+        await answer_callback_query(cbq_id)
+        await send_dm(user_id, _help_text())
+        return
+
+    if data == "menu:status":
+        await answer_callback_query(cbq_id)
+        if user_id in ADMIN_USER_IDS:
+            await _handle_status(user_id)
+        return
 
     # s:{idx}:{current_open} — toggle accordion
     if data.startswith("s:"):
@@ -409,7 +655,7 @@ async def _handle_settings_callback(
     internal_id = _get_internal_user_id(db, user_id)
 
     def _s() -> Any:
-        return queries.get_user_settings(db, internal_id) if internal_id else queries._SETTINGS_DEFAULTS
+        return queries.get_user_settings(db, internal_id) if internal_id else queries.DEFAULT_SETTINGS
 
     # cfg:main — re-render main menu
     if data == "cfg:main":
