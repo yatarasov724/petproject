@@ -382,3 +382,97 @@ async def test_onb_skip_quiet_shows_done_without_saving(db):
         if msg.get("reply_markup", {}).get("keyboard") == [[{"text": "☰ Меню"}]]
     ]
     assert len(reply_keyboards) == 1
+
+@pytest.mark.asyncio
+async def test_menu_portfolio_opens_keyboard(db):
+    """`menu:portfolio` sends portfolio accordion keyboard."""
+    sent: list[dict] = []
+
+    async def capture_dm(user_id, text, reply_markup=None, **kwargs):
+        sent.append({"reply_markup": reply_markup})
+        return 1
+
+    with (
+        patch("app.bot.commands.answer_callback_query", AsyncMock()),
+        patch("app.bot.commands.send_dm", side_effect=capture_dm),
+    ):
+        from app.bot.commands import handle_update
+        await handle_update(db, _make_callback(111, "menu:portfolio"))
+
+    all_data = [
+        btn["callback_data"]
+        for msg in sent
+        if msg.get("reply_markup") and "inline_keyboard" in msg["reply_markup"]
+        for row in msg["reply_markup"]["inline_keyboard"]
+        for btn in row
+    ]
+    # Keyboard contains sector buttons and done button
+    assert "done" in all_data or any("s:" in d for d in all_data)
+
+
+@pytest.mark.asyncio
+async def test_menu_help_sends_help_text(db):
+    """`menu:help` sends the help text."""
+    sent_texts: list[str] = []
+
+    async def capture_dm(user_id, text, **kwargs):
+        sent_texts.append(text)
+        return 1
+
+    with (
+        patch("app.bot.commands.answer_callback_query", AsyncMock()),
+        patch("app.bot.commands.send_dm", side_effect=capture_dm),
+    ):
+        from app.bot.commands import handle_update
+        await handle_update(db, _make_callback(111, "menu:help"))
+
+    assert len(sent_texts) == 1
+    assert "/portfolio" in sent_texts[0]
+    assert "/calendar" in sent_texts[0]
+    assert "/settings" in sent_texts[0]
+
+
+@pytest.mark.asyncio
+async def test_menu_settings_opens_settings_keyboard(db):
+    """`menu:settings` opens settings keyboard."""
+    sent: list[dict] = []
+
+    async def capture_dm(user_id, text, reply_markup=None, **kwargs):
+        sent.append({"reply_markup": reply_markup})
+        return 1
+
+    with (
+        patch("app.bot.commands.answer_callback_query", AsyncMock()),
+        patch("app.bot.commands.send_dm", side_effect=capture_dm),
+    ):
+        from app.bot.commands import handle_update
+        await handle_update(db, _make_callback(111, "menu:settings"))
+
+    all_data = [
+        btn["callback_data"]
+        for msg in sent
+        if msg.get("reply_markup") and "inline_keyboard" in msg["reply_markup"]
+        for row in msg["reply_markup"]["inline_keyboard"]
+        for btn in row
+    ]
+    assert "cfg:score" in all_data
+    assert "cfg:quiet" in all_data
+
+
+@pytest.mark.asyncio
+async def test_menu_status_blocked_for_non_admin(db):
+    """`menu:status` does nothing for non-admin users."""
+    sent_texts: list[str] = []
+
+    async def capture_dm(user_id, text, **kwargs):
+        sent_texts.append(text)
+        return 1
+
+    with (
+        patch("app.bot.commands.answer_callback_query", AsyncMock()),
+        patch("app.bot.commands.send_dm", side_effect=capture_dm),
+    ):
+        from app.bot.commands import handle_update
+        await handle_update(db, _make_callback(99999, "menu:status"))
+
+    assert len(sent_texts) == 0

@@ -531,6 +531,36 @@ async def _handle_callback(db: DBConnection, cbq: dict) -> None:
         )
         return
 
+    # ── Main menu callbacks ───────────────────────────────────────────────────
+
+    if data == "menu:portfolio":
+        await answer_callback_query(cbq_id)
+        await send_dm(user_id, _keyboard_header(len(subscribed)), reply_markup=_build_keyboard(subscribed))
+        return
+
+    if data == "menu:calendar":
+        await answer_callback_query(cbq_id)
+        await _handle_calendar(db, user_id)
+        return
+
+    if data == "menu:settings":
+        await answer_callback_query(cbq_id)
+        internal_id = _get_internal_user_id(db, user_id)
+        s = queries.get_user_settings(db, internal_id) if internal_id else queries.DEFAULT_SETTINGS
+        await send_dm(user_id, _settings_header(s), reply_markup=_build_settings_keyboard())
+        return
+
+    if data == "menu:help":
+        await answer_callback_query(cbq_id)
+        await send_dm(user_id, _help_text())
+        return
+
+    if data == "menu:status":
+        await answer_callback_query(cbq_id)
+        if user_id in ADMIN_USER_IDS:
+            await _handle_status(user_id)
+        return
+
     # s:{idx}:{current_open} — toggle accordion
     if data.startswith("s:"):
         await answer_callback_query(cbq_id)
