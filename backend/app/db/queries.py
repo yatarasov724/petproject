@@ -726,6 +726,15 @@ def get_user_tickers(db: DBConnection, user_id: int) -> list[str]:
 
 def set_user_tickers(db: DBConnection, user_id: int, tickers: list[str]) -> None:
     """Replace a user's subscriptions with the given tickers (idempotent)."""
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+    old = get_user_tickers(db, user_id)
+    _log.info(
+        "portfolio_change action=set user_id=%d old=%d new=%d tickers=%s",
+        user_id, len(old), len(tickers), ",".join(sorted(t.upper() for t in tickers)) or "(none)",
+        extra={"event": "portfolio_change", "action": "set", "user_id": user_id,
+               "old_count": len(old), "new_count": len(tickers)},
+    )
     with db:
         db.execute(
             "DELETE FROM portfolio_subscriptions WHERE user_id = %s",
@@ -739,6 +748,14 @@ def set_user_tickers(db: DBConnection, user_id: int, tickers: list[str]) -> None
 
 def clear_user_tickers(db: DBConnection, user_id: int) -> None:
     """Remove all subscriptions for a user."""
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+    old = get_user_tickers(db, user_id)
+    _log.info(
+        "portfolio_change action=clear user_id=%d wiped=%d",
+        user_id, len(old),
+        extra={"event": "portfolio_change", "action": "clear", "user_id": user_id, "wiped": len(old)},
+    )
     db.execute(
         "DELETE FROM portfolio_subscriptions WHERE user_id = %s",
         (user_id,),

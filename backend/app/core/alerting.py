@@ -12,12 +12,13 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-_BASE_URL = "https://api.telegram.org/bot{token}/sendMessage"
-_TIMEOUT  = aiohttp.ClientTimeout(total=5)
+_BASE_URL  = "https://api.telegram.org/bot{token}/sendMessage"
+_TIMEOUT   = aiohttp.ClientTimeout(total=15)   # was 5s — intermittent CancelledError under load
+_MAX_RETRY = 2
 
 
 async def send_ops(text: str) -> None:
-    """Send plain text to the ops chat. Never raises."""
+    """Send plain text to the ops chat. Never raises. Retries once on transient failure."""
     if not settings.telegram_ops_chat_id:
         return
     if settings.dry_run:
@@ -29,15 +30,18 @@ async def send_ops(text: str) -> None:
         "text":                     text,
         "disable_web_page_preview": True,
     }
-    try:
-        async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
-            async with session.post(url, json=payload) as resp:
-                if resp.status != 200:
+    for attempt in range(1, _MAX_RETRY + 1):
+        try:
+            async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+                async with session.post(url, json=payload) as resp:
+                    if resp.status == 200:
+                        return
                     body = await resp.text()
                     logger.warning(
-                        "ops alert failed: HTTP %d — %s", resp.status, body[:120]
+                        "ops alert failed (attempt %d): HTTP %d — %s",
+                        attempt, resp.status, body[:120],
                     )
-    except BaseException as exc:
-        # CancelledError is BaseException in Python 3.11+, not Exception.
-        # Alerting must never raise — swallow everything including cancellations.
-        logger.warning("ops alert dropped: %s", exc, exc_info=True)
+        except BaseException as exc:
+            # CancelledError is BaseException in Python 3.11+, not Exception.
+            # Alerting must never raise — swallow everything including cancellations.
+            logger.warning("ops alert dropped (attempt %d): %s", attempt, exc)

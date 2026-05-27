@@ -88,3 +88,7 @@ SOURCES_DEAD        = "sources_dead"
 
 PIPELINE_ERRORS     = "pipeline_errors"
 CLEANUP_RUNS        = "cleanup_runs"
+
+PORTFOLIO_DM_SENT   = "portfolio_dm_sent"
+PORTFOLIO_DM_FAILED = "portfolio_dm_failed"
+PORTFOLIO_NO_SUBS   = "portfolio_no_subs"    # events with tickers but 0 subscribers

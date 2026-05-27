@@ -159,14 +159,18 @@ async def heartbeat_job() -> None:
         if dead_n:
             source_parts.append(f"{dead_n} DEAD ⚠")
 
-        tg_ok   = metrics.get(metrics.TG_SENT_OK)
-        tg_fail = metrics.get(metrics.TG_SENT_FAIL)
+        tg_ok      = metrics.get(metrics.TG_SENT_OK)
+        tg_fail    = metrics.get(metrics.TG_SENT_FAIL)
+        dm_sent    = metrics.get(metrics.PORTFOLIO_DM_SENT)
+        dm_failed  = metrics.get(metrics.PORTFOLIO_DM_FAILED)
+        dm_no_subs = metrics.get(metrics.PORTFOLIO_NO_SUBS)
 
         text = (
             f"{header} MOEX parser — alive\n"
             f"⏱ uptime: {hours}h {minutes}m\n"
             f"📡 sources: {' · '.join(source_parts)}\n"
             f"📊 published: {tg_ok} total · {tg_fail} failed\n"
+            f"📬 portfolio DMs: {dm_sent} sent · {dm_failed} failed · {dm_no_subs} no-subs\n"
             f"🕐 last msg: {last_sent_str}"
         )
         await _send_ops(text)

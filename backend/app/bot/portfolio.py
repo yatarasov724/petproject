@@ -7,6 +7,7 @@ Opens its own DB connection so it can safely run after the poll cycle closes the
 
 import logging
 
+from app.core import metrics
 from app.db import queries
 from app.db.database import get_db
 from app.telegram.client import send_dm
@@ -32,6 +33,13 @@ async def notify(tickers_raw: str, canonical_title: str, cluster_id: int) -> Non
         db.close()
 
     if not user_ids:
+        # Track events that had tickers but reached nobody — useful for monitoring.
+        metrics.inc(metrics.PORTFOLIO_NO_SUBS)
+        logger.debug(
+            "portfolio notify: 0 subscribers for tickers=%s cluster_id=%d",
+            ",".join(tickers), cluster_id,
+            extra={"event": "portfolio_no_subs", "tickers": ",".join(tickers), "cluster_id": cluster_id},
+        )
         return
 
     tickers_line = " · ".join(f"\\${t}" for t in tickers)
@@ -41,6 +49,10 @@ async def notify(tickers_raw: str, canonical_title: str, cluster_id: int) -> Non
     for user_id in user_ids:
         msg_id = await send_dm(user_id, text)
         ok = msg_id is not None
+        if ok:
+            metrics.inc(metrics.PORTFOLIO_DM_SENT)
+        else:
+            metrics.inc(metrics.PORTFOLIO_DM_FAILED)
         logger.info(
             "portfolio notify %s: user_id=%d cluster_id=%d tickers=%s",
             "ok" if ok else "failed",
