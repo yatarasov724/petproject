@@ -210,7 +210,7 @@ class AIAnalysis:
     context:       str = ""    # why this matters now (from RAG), may be empty
 
 
-async def analyze(title: str, text: str = "", recent_context: list[str] = []) -> Optional[AIAnalysis]:
+async def analyze(title: str, text: str = "", recent_context: list[str] | None = None) -> Optional[AIAnalysis]:
     """
     Analyze a publishable news headline via OpenRouter.
     Returns AIAnalysis on success, None on any failure.
