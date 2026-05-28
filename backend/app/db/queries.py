@@ -715,6 +715,29 @@ def get_subscribed_users(db: DBConnection, tickers: list[str]) -> list[int]:
     return [r["user_id"] for r in rows]
 
 
+def get_recent_cluster_titles_for_tickers(
+    db: DBConnection, tickers: list[str], limit: int = 5, days: int = 14
+) -> list[str]:
+    """Return recent published cluster titles matching any of the tickers (RAG context)."""
+    if not tickers:
+        return []
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ilike_clauses = " OR ".join("tickers ILIKE %s" for _ in tickers)
+    params = tuple(f"%{t}%" for t in tickers) + (cutoff, limit)
+    rows = db.execute(
+        f"""
+        SELECT canonical_title FROM event_clusters
+        WHERE ({ilike_clauses})
+          AND last_updated_at > %s
+          AND status IN ('published', 'updated')
+        ORDER BY last_updated_at DESC
+        LIMIT %s
+        """,
+        params,
+    ).fetchall()
+    return [row["canonical_title"] for row in rows]
+
+
 def get_user_tickers(db: DBConnection, user_id: int) -> list[str]:
     """Return tickers subscribed by a user, sorted alphabetically."""
     rows = db.execute(

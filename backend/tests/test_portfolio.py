@@ -81,6 +81,57 @@ def test_subscriptions_isolated_per_user(db):
     assert queries.get_user_tickers(db, 222) == ["LKOH"]
 
 
+# ── RAG context query ────────────────────────────────────────────────────────────────────────────────
+
+def _insert_cluster(db, title: str, tickers: str, status: str = "published") -> None:
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    db.execute(
+        """
+        INSERT INTO event_clusters
+            (canonical_title, title_tokens, keywords, best_score, tickers, status,
+             first_seen_at, last_updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        (title, title.lower(), title.lower(), 50, tickers, status, now, now),
+    )
+    db.commit()
+
+
+def test_get_recent_cluster_titles_returns_matching(db):
+    _insert_cluster(db, "Газпром снизил поставки", "GAZP")
+    from app.db.queries import get_recent_cluster_titles_for_tickers
+    result = get_recent_cluster_titles_for_tickers(db, ["GAZP"])
+    assert "Газпром снизил поставки" in result
+
+
+def test_get_recent_cluster_titles_no_match(db):
+    _insert_cluster(db, "Сбер отчитался", "SBER")
+    from app.db.queries import get_recent_cluster_titles_for_tickers
+    result = get_recent_cluster_titles_for_tickers(db, ["GAZP"])
+    assert result == []
+
+
+def test_get_recent_cluster_titles_empty_tickers(db):
+    from app.db.queries import get_recent_cluster_titles_for_tickers
+    result = get_recent_cluster_titles_for_tickers(db, [])
+    assert result == []
+
+
+def test_get_recent_cluster_titles_ignores_new_status(db):
+    _insert_cluster(db, "Кластер без публикации", "SBER", status="new")
+    from app.db.queries import get_recent_cluster_titles_for_tickers
+    result = get_recent_cluster_titles_for_tickers(db, ["SBER"])
+    assert result == []
+
+
+def test_get_recent_cluster_titles_multi_ticker(db):
+    _insert_cluster(db, "Газпром и Новатэк под давлением", "GAZP,NVTK")
+    from app.db.queries import get_recent_cluster_titles_for_tickers
+    result = get_recent_cluster_titles_for_tickers(db, ["NVTK"])
+    assert "Газпром и Новатэк под давлением" in result
+
+
 # ── notification dispatch ─────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
