@@ -200,6 +200,111 @@ async def test_notify_message_contains_ticker_and_title(db):
     assert "Сбер" in sent_texts[0]
 
 
+@pytest.mark.asyncio
+async def test_notify_with_ai_sends_enriched_dm(db):
+    queries.set_user_tickers(db, 111, ["SBER"])
+
+    from app.ai.analyzer import AIAnalysis
+    ai = AIAnalysis(
+        title="ЦБ сохранил ставку",
+        impact="positive",
+        emoji="🟢",
+        summary="Банк России оставил ставку на уровне 21%",
+        market_effect="поддержка для ОФЗ и банков",
+        affects="ОФЗ · акции",
+        tickers=["SBER"],
+        context="На фоне замедления инфляции",
+    )
+
+    sent_texts: list[str] = []
+
+    async def capture_dm(user_id, text, **kwargs):
+        sent_texts.append(text)
+        return 42
+
+    with (
+        patch("app.bot.portfolio.get_db", return_value=db),
+        patch("app.bot.portfolio.send_dm", side_effect=capture_dm),
+        patch.object(db, "close"),
+    ):
+        from app.bot.portfolio import notify_with_ai
+        await notify_with_ai("SBER", ai, cluster_id=1)
+
+    assert len(sent_texts) == 1
+    msg = sent_texts[0]
+    assert "🟢" in msg
+    assert "ЦБ сохранил ставку" in msg
+    assert "Банк России оставил ставку" in msg
+    assert "поддержка для ОФЗ" in msg
+    assert "SBER" in msg
+
+
+@pytest.mark.asyncio
+async def test_notify_with_ai_omits_empty_context(db):
+    queries.set_user_tickers(db, 111, ["SBER"])
+
+    from app.ai.analyzer import AIAnalysis
+    ai = AIAnalysis(
+        title="ЦБ сохранил ставку",
+        impact="positive",
+        emoji="🟢",
+        summary="Банк России оставил ставку на уровне 21%",
+        market_effect="поддержка для ОФЗ",
+        affects="ОФЗ · акции",
+        tickers=["SBER"],
+        context="",
+    )
+
+    sent_texts: list[str] = []
+
+    async def capture_dm(user_id, text, **kwargs):
+        sent_texts.append(text)
+        return 42
+
+    with (
+        patch("app.bot.portfolio.get_db", return_value=db),
+        patch("app.bot.portfolio.send_dm", side_effect=capture_dm),
+        patch.object(db, "close"),
+    ):
+        from app.bot.portfolio import notify_with_ai
+        await notify_with_ai("SBER", ai, cluster_id=1)
+
+    assert "📌" not in sent_texts[0]
+
+
+@pytest.mark.asyncio
+async def test_notify_with_ai_uses_ai_tickers(db):
+    queries.set_user_tickers(db, 111, ["SBER"])
+
+    from app.ai.analyzer import AIAnalysis
+    ai = AIAnalysis(
+        title="Банки под давлением",
+        impact="negative",
+        emoji="🔴",
+        summary="Санкции затронули банковский сектор",
+        market_effect="давление на банки",
+        affects="акции",
+        tickers=["SBER", "VTBR"],
+        context="",
+    )
+
+    sent_texts: list[str] = []
+
+    async def capture_dm(user_id, text, **kwargs):
+        sent_texts.append(text)
+        return 42
+
+    with (
+        patch("app.bot.portfolio.get_db", return_value=db),
+        patch("app.bot.portfolio.send_dm", side_effect=capture_dm),
+        patch.object(db, "close"),
+    ):
+        from app.bot.portfolio import notify_with_ai
+        await notify_with_ai("SBER", ai, cluster_id=1)
+
+    assert "VTBR" in sent_texts[0]
+
+
 # ── command handler ───────────────────────────────────────────────────────────
 
 def _make_update(user_id: int, text: str, update_id: int = 1) -> dict:
