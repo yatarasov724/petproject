@@ -79,18 +79,29 @@ forex → валюты
 
 ---
 
-6. ТИКЕРЫ MOEX (tickers)
+6. КОНТЕКСТ (context)
+Если переданы «Последние события по этим тикерам» — напиши 1 предложение:
+почему данное событие важно именно сейчас, в контексте этих событий.
+Стиль: «На фоне …», «После …», «Вопреки …».
+Если последних событий нет или они не релевантны — верни пустую строку "".
+Максимум 15 слов.
+
+---
+
+7. ТИКЕРЫ MOEX (tickers)
 Полный список допустимых тикеров:
 
 Нефть и газ:
 GAZP (Газпром, Миллер), LKOH (Лукойл, Алекперов), ROSN (Роснефть, Сечин),
 NVTK (Новатэк, Михельсон), TATN (Татнефть), SNGS (Сургутнефтегаз),
-ENPG (Эн+), TRNFP (Транснефть), BANEP (Башнефть)
+ENPG (Эн+), TRNFP (Транснефть), BANEP (Башнефть), RNFT (Русснефть),
+NMTP (НМТП, Новороссийский морской торговый порт)
 
 Банки и финансы:
 SBER (Сбербанк, Сбер, Греф), VTBR (ВТБ), TCSG (Тинькофф, Т-Банк),
 CBOM (МКБ, Московский кредитный банк), BSPB (Банк Санкт-Петербург),
-AFKS (АФК Система), SVCB (Совкомбанк), SPBE (СПБ Биржа), RENI (Ренессанс Страхование)
+AFKS (АФК Система), SVCB (Совкомбанк), SPBE (СПБ Биржа), RENI (Ренессанс Страхование),
+MTSB (МТС-Банк — это БАНК, не оператор связи МТС!)
 
 Металлы и горная добыча:
 GMKN (Норникель, Потанин), CHMF (Северсталь, Мордашов), NLMK (НЛМК),
@@ -99,12 +110,14 @@ POLY (Полиметалл, Polymetal), MTLR (Мечел), SELG (Селигда�
 RUAL (Русал, алюминий), RASP (Распадская, уголь)
 
 Электроэнергетика:
-IRAO (Интер РАО), HYDR (РусГидро), FEES (ФСК ЕЭС, Россети)
+IRAO (Интер РАО), HYDR (РусГидро), FEES (ФСК ЕЭС, Россети — только головная компания!),
+MSRS (Россети Московский регион), MRKV (Россети Волга),
+MRKU (Россети Урал), MRKP (Россети Центр и Приволжье), MRKC (Россети Центр)
 
 IT и телеком:
-YNDX (Яндекс, Yandex), MTSS (МТС), RTKM (Ростелеком),
+YNDX (Яндекс, Yandex), MTSS (МТС — оператор связи, НЕ МТС-Банк!), RTKM (Ростелеком),
 VKCO (ВКонтакте, VK), POSI (Позитив Текнолоджис),
-HHRU (Хедхантер, HeadHunter), OZON (Ozon, Озон)
+HHRU (Хедхантер, HeadHunter), OZON (Ozon-маркетплейс), DIAS (Диасофт)
 
 Транспорт:
 FLOT (Совкомфлот, танкеры), AFLT (Аэрофлот)
@@ -112,13 +125,13 @@ FLOT (Совкомфлот, танкеры), AFLT (Аэрофлот)
 Ритейл, агро, прочее:
 MGNT (Магнит), FIVE (X5, Пятёрочка, Перекрёсток), FIXP (Fix Price),
 PHOR (ФосАгро), AGRO (РусАгро), MOEX (Мосбиржа, Московская биржа),
-SGZH (Сегежа)
+SGZH (Сегежа), MGKL (МГКЛ, Мосгорломбард), OZPH (Озон Фармацевтика)
 
 Недвижимость:
 SMLT (Самолёт), PIKK (ПИК), LSRG (ЛСР), ETLN (Эталон)
 
 Правила:
-- Только тикеры из списка выше
+- Только тикеры из списка выше — НИКАКИХ других
 - Только если компания ПРЯМО упомянута в новости ИЛИ применяется одно из правил ниже
 - ОБЯЗАТЕЛЬНО: нефтяные котировки / цена нефти / ОПЕК / нефтяной рынок → ["LKOH", "ROSN"]
 - ОБЯЗАТЕЛЬНО: цена газа / газовый рынок (без конкретной компании) → ["GAZP", "NVTK"]
@@ -126,9 +139,20 @@ SMLT (Самолёт), PIKK (ПИК), LSRG (ЛСР), ETLN (Эталон)
 - Макроэкономика, ЦБ, санкции без конкретной компании → пустой массив []
 - Максимум 3 тикера
 
+КРИТИЧЕСКИ ВАЖНО — ЗАПРЕЩЁННЫЕ ОШИБКИ:
+❌ МГКЛ → НЕ MTSS, НЕ FEES, НЕ AFLT. МГКЛ = MGKL (Мосгорломбард)
+❌ МТС-Банк → НЕ MTSS. МТС-Банк = MTSB
+❌ Озон Фармацевтика → НЕ OZON. Озон Фармацевтика = OZPH
+❌ AutoZone (американская компания) → [] (не торгуется на MOEX, тикера нет)
+❌ Иностранная компания (Goldman Sachs, Evercore, Apple, ...) → []
+❌ НМТП → НЕ VTBR. НМТП = NMTP
+❌ Русснефть → НЕ LKOH, НЕ ROSN. Русснефть = RNFT
+❌ Если компания есть в новости, но её тикера НЕТ в списке выше → обязательно []
+❌ Не угадывай тикер похожей компании — лучше вернуть [], чем ошибиться
+
 ---
 
-7. ПРАВИЛА
+8. ПРАВИЛА
 - никакого английского
 - без категории
 - коротко и по делу
@@ -144,7 +168,8 @@ SMLT (Самолёт), PIKK (ПИК), LSRG (ЛСР), ETLN (Эталон)
   "summary": "1 предложение — что произошло (не повторяет заголовок)",
   "market_effect": "прямой эффект на рынок (1 предложение)",
   "affects": "акции · рубль · ОФЗ · сырьё",
-  "tickers": ["SBER", "GAZP"]
+  "tickers": ["SBER", "GAZP"],
+  "context": "На фоне падения цен на газ в Европе"
 }\
 """
 
@@ -155,18 +180,19 @@ _VALID_EMOJIS  = frozenset({"🟢", "🔴"})
 _VALID_TICKERS = frozenset({
     # Нефть и газ
     "GAZP", "LKOH", "ROSN", "NVTK", "TATN", "SNGS", "ENPG", "TRNFP", "BANEP",
+    "RNFT", "NMTP",
     # Банки и финансы
-    "SBER", "VTBR", "TCSG", "CBOM", "BSPB", "AFKS", "SVCB", "SPBE", "RENI",
+    "SBER", "VTBR", "TCSG", "CBOM", "BSPB", "AFKS", "SVCB", "SPBE", "RENI", "MTSB",
     # Металлы и горная добыча
     "GMKN", "CHMF", "NLMK", "MAGN", "PLZL", "ALRS", "POLY", "MTLR", "SELG", "RUAL", "RASP",
     # Электроэнергетика
-    "IRAO", "HYDR", "FEES",
+    "IRAO", "HYDR", "FEES", "MSRS", "MRKV", "MRKU", "MRKP", "MRKC",
     # IT и телеком
-    "YNDX", "MTSS", "RTKM", "VKCO", "POSI", "HHRU", "OZON",
+    "YNDX", "MTSS", "RTKM", "VKCO", "POSI", "HHRU", "OZON", "DIAS",
     # Транспорт
     "FLOT", "AFLT",
     # Ритейл, агро, прочее
-    "MGNT", "FIVE", "FIXP", "PHOR", "AGRO", "MOEX", "SGZH",
+    "MGNT", "FIVE", "FIXP", "PHOR", "AGRO", "MOEX", "SGZH", "MGKL", "OZPH",
     # Недвижимость
     "SMLT", "PIKK", "LSRG", "ETLN",
 })
@@ -181,9 +207,10 @@ class AIAnalysis:
     market_effect: str
     affects:       str         # "акции · рубль · ОФЗ · сырьё"
     tickers:       list[str]   # validated MOEX tickers, e.g. ["SBER", "GAZP"]
+    context:       str = ""    # why this matters now (from RAG), may be empty
 
 
-async def analyze(title: str, text: str = "") -> Optional[AIAnalysis]:
+async def analyze(title: str, text: str = "", recent_context: list[str] = []) -> Optional[AIAnalysis]:
     """
     Analyze a publishable news headline via OpenRouter.
     Returns AIAnalysis on success, None on any failure.
@@ -191,13 +218,16 @@ async def analyze(title: str, text: str = "") -> Optional[AIAnalysis]:
     if not settings.openrouter_api_key:
         return None
 
+    user_content = _USER_TEMPLATE.format(title=title, text=text or title)
+    if recent_context:
+        events_block = "\n".join(f"• {t}" for t in recent_context[:5])
+        user_content += f"\n\nПоследние события по этим тикерам:\n{events_block}"
+
     payload = {
         "model": _MODEL,
         "messages": [
             {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user",   "content": _USER_TEMPLATE.format(
-                title=title, text=text or title,
-            )},
+            {"role": "user",   "content": user_content},
         ],
         "response_format": {"type": "json_object"},
         "temperature": 0.1,
@@ -254,6 +284,8 @@ def _validate(data: dict) -> Optional[AIAnalysis]:
         else:
             tickers = []
 
+        context = str(data.get("context", "")).strip()
+
         return AIAnalysis(
             title=ai_title,
             impact=impact,
@@ -262,6 +294,7 @@ def _validate(data: dict) -> Optional[AIAnalysis]:
             market_effect=market_effect,
             affects=affects,
             tickers=tickers,
+            context=context,
         )
     except Exception:
         return None
