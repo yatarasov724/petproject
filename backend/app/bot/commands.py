@@ -286,8 +286,10 @@ def _help_text() -> str:
         "Ближайшие дивиденды, отчёты и оферты по твоим тикерам на 30 дней вперёд\\.\n\n"
         "⚙️ *Настройки* — /settings\n"
         "Порог важности \\(фильтр новостей\\) и тихие часы\\.\n\n"
-        "📡 *Канал*\n"
-        "Все значимые новости публикуются в общем канале\\."
+        "📡 *Канал* — [t\\.me/geomoexnews](https://t.me/geomoexnews)\n"
+        "Все значимые новости публикуются в реальном времени\\.\n\n"
+        "💬 *Обратная связь* — /feedback\n"
+        "Нашёл баг или есть пожелание? Напиши `/feedback текст` — мы прочитаем\\."
     )
 
 
@@ -522,6 +524,22 @@ async def handle_update(db: DBConnection, update: dict) -> None:
 
     elif cmd == "/help":
         await send_dm(user_id, _help_text())
+
+    elif cmd == "/feedback":
+        body = text[len("/feedback"):].strip()
+        if not body:
+            await send_dm(user_id, "Напиши сообщение после команды: `/feedback текст`")
+        else:
+            from app.core.alerting import send_ops
+            username = from_data.get("username") or str(user_id)
+            await send_ops(
+                f"💬 Фидбэк от @{username} (id={user_id}):\n{body}"
+            )
+            await send_dm(user_id, "✅ Спасибо, мы получили твоё сообщение\\!")
+            logger.info(
+                "feedback received user_id=%d", user_id,
+                extra={"event": "feedback", "user_id": user_id},
+            )
 
     else:
         await send_dm(
