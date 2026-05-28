@@ -47,7 +47,6 @@ from app.pipeline.publish_decision import decide, Decision, PublishDecision, COO
 from app.pipeline.relevance import is_russia_relevant
 from app.pipeline.ticker_validator import validate_tickers
 from app.telegram import client as tg
-from app.telegram.formatter import format_message
 
 # Articles older than this are skipped before entering the pipeline.
 # Prevents publishing stale RSS entries that appeared late in the feed.
@@ -365,17 +364,23 @@ async def _run(db: DBConnection, article: RawArticle) -> ArticleResult:
                 "title":      short,
             },
         )
+        tickers_raw = cluster["tickers"] or ""
         if msg_id and settings.openrouter_api_key:
             asyncio.create_task(
-                _ai_enrich(article.title, article.content, cluster, score_result, pub, msg_id, correlations)
+                _ai_enrich(
+                    article.title, article.content, cluster, score_result, pub, msg_id,
+                    correlations, tickers_raw=tickers_raw,
+                    canonical_title=cluster["canonical_title"],
+                )
+            )
+        elif tickers_raw:
+            asyncio.create_task(
+                _notify_portfolio(tickers_raw, cluster["canonical_title"], cluster["id"])
             )
         asyncio.create_task(
             _detect_unknown_company(cluster["canonical_title"], bool(cluster["tickers"]))
         )
         if cluster["tickers"]:
-            asyncio.create_task(
-                _notify_portfolio(cluster["tickers"], cluster["canonical_title"], cluster["id"])
-            )
             asyncio.create_task(
                 capture_price_snapshot(cluster["id"], cluster["tickers"], score_result.event_type.value)
             )
@@ -441,27 +446,49 @@ async def _ai_enrich(
     pub: PublishDecision,
     message_id: int,
     correlations: list | None = None,
+    *,
+    tickers_raw: str = "",
+    canonical_title: str = "",
 ) -> None:
     """
     Background task: call AI, then edit the already-sent Telegram message.
     Runs concurrently with the next poll cycle — never blocks article processing.
     """
     try:
-        ai_analysis = await analyzer.analyze(title, content)
+        recent_context: list[str] = []
+        if tickers_raw:
+            from app.db.database import get_db as _get_db
+            from app.db import queries as _queries
+            _db = _get_db()
+            try:
+                ticker_list = [t.strip() for t in tickers_raw.split(",") if t.strip()]
+                recent_context = _queries.get_recent_cluster_titles_for_tickers(_db, ticker_list)
+            finally:
+                _db.close()
+
+        ai_analysis = await analyzer.analyze(title, content, recent_context=recent_context)
         if ai_analysis is None:
+            if tickers_raw:
+                await _notify_portfolio(tickers_raw, canonical_title, cluster["id"])
             return
-        enriched = format_message(cluster, score_result, pub.decision, ai_analysis, correlations=correlations or [])
-        await tg.edit_message(message_id, enriched)
+
+        if tickers_raw:
+            from app.bot.portfolio import notify_with_ai
+            await notify_with_ai(tickers_raw, ai_analysis, cluster["id"])
+
         logger.info(
-            "AI enrich ok: edited message_id=%d cluster_id=%d",
-            message_id,
+            "AI enrich ok: cluster_id=%d",
             cluster["id"],
             extra={"event": "ai_enrich_ok", "cluster_id": cluster["id"]},
         )
     except Exception:
         logger.warning(
-            "AI enrich failed: message_id=%d cluster_id=%d",
-            message_id,
+            "AI enrich failed: cluster_id=%d",
             cluster["id"],
             exc_info=True,
         )
+        if tickers_raw:
+            try:
+                await _notify_portfolio(tickers_raw, canonical_title, cluster["id"])
+            except Exception:
+                logger.warning("portfolio fallback DM also failed", exc_info=True)
