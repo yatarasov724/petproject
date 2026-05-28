@@ -522,6 +522,10 @@ async def handle_update(db: DBConnection, update: dict) -> None:
     elif cmd == "/calendar":
         await _handle_calendar(db, user_id)
 
+    elif cmd == "/unsubscribe":
+        queries.set_user_tickers(db, user_id, [])
+        await send_dm(user_id, "Вы отписались от всех уведомлений\\. Управление подпиской: */portfolio*")
+
     elif cmd == "/help":
         await send_dm(user_id, _help_text())
 

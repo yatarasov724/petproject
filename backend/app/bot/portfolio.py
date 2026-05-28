@@ -22,7 +22,7 @@ from app.telegram.formatter import _esc
 logger = logging.getLogger(__name__)
 
 
-async def notify(tickers_raw: str, canonical_title: str, cluster_id: int) -> None:
+async def notify(tickers_raw: str, canonical_title: str, cluster_id: int, score: int | None = None) -> None:
     """
     Send DMs to all users subscribed to any ticker in this cluster.
 
