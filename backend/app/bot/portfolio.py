@@ -6,6 +6,11 @@ Opens its own DB connection so it can safely run after the poll cycle closes the
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.ai.analyzer import AIAnalysis
+
 import logging
 
 from app.core import metrics
