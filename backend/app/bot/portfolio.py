@@ -13,11 +13,12 @@ if TYPE_CHECKING:
 
 import logging
 
+from app.ai.signal import build_signal
 from app.core import metrics
 from app.db import queries
 from app.db.database import get_db
 from app.telegram.client import send_dm
-from app.telegram.formatter import _esc
+from app.telegram.formatter import format_trade_dm, _esc
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,6 @@ async def notify(tickers_raw: str, canonical_title: str, cluster_id: int, score:
         db.close()
 
     if not user_ids:
-        # Track events that had tickers but reached nobody — useful for monitoring.
         metrics.inc(metrics.PORTFOLIO_NO_SUBS)
         logger.debug(
             "portfolio notify: 0 subscribers for tickers=%s cluster_id=%d",
@@ -74,12 +74,14 @@ async def notify(tickers_raw: str, canonical_title: str, cluster_id: int, score:
 
 
 async def notify_with_ai(
-    tickers_raw: str,
-    ai_analysis: "AIAnalysis",
-    cluster_id: int,
+    tickers_raw:     str,
+    ai_analysis:     "AIAnalysis",
+    cluster_id:      int,
     canonical_title: str = "",
+    correlations:    list | None = None,
+    event_type:      str = "",
 ) -> None:
-    """Send AI-enriched DM to all users subscribed to any ticker in this cluster."""
+    """Send trade-signal DM to all users subscribed to any ticker in this cluster."""
     tickers = [t.strip() for t in tickers_raw.split(",") if t.strip()]
     if not tickers:
         return
@@ -100,23 +102,9 @@ async def notify_with_ai(
         dm_tickers = [t for t in safe.split(",") if t] if safe else tickers
     else:
         dm_tickers = ai_analysis.tickers if ai_analysis.tickers else tickers
-    tickers_line = " · ".join(f"\\${t}" for t in dm_tickers)
 
-    parts = [
-        f"{ai_analysis.emoji} *{_esc(ai_analysis.title)}*",
-        "",
-        _esc(ai_analysis.summary),
-    ]
-    if ai_analysis.context:
-        parts += ["", f"📌 {_esc(ai_analysis.context)}"]
-    parts += [
-        "",
-        f"⚡ {_esc(ai_analysis.market_effect)}",
-    ]
-    if tickers_line:
-        parts += ["", tickers_line]
-
-    text = "\n".join(parts)
+    signal = await build_signal(correlations or [], ai_analysis, canonical_title, event_type)
+    text = format_trade_dm(canonical_title, dm_tickers, signal)
 
     for user_id in user_ids:
         msg_id = await send_dm(user_id, text)

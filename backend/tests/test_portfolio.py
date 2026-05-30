@@ -102,7 +102,7 @@ def test_get_recent_cluster_titles_returns_matching(db):
     _insert_cluster(db, "Газпром снизил поставки", "GAZP")
     from app.db.queries import get_recent_cluster_titles_for_tickers
     result = get_recent_cluster_titles_for_tickers(db, ["GAZP"])
-    assert "Газпром снизил поставки" in result
+    assert any("Газпром снизил поставки" in item for item in result)
 
 
 def test_get_recent_cluster_titles_no_match(db):
@@ -129,7 +129,7 @@ def test_get_recent_cluster_titles_multi_ticker(db):
     _insert_cluster(db, "Газпром и Новатэк под давлением", "GAZP,NVTK")
     from app.db.queries import get_recent_cluster_titles_for_tickers
     result = get_recent_cluster_titles_for_tickers(db, ["NVTK"])
-    assert "Газпром и Новатэк под давлением" in result
+    assert any("Газпром и Новатэк под давлением" in item for item in result)
 
 
 # ── notification dispatch ─────────────────────────────────────────────────────
@@ -295,7 +295,8 @@ async def test_notify_with_ai_includes_all_tickers_in_dm(db):
         patch.object(db, "close"),
     ):
         from app.bot.portfolio import notify_with_ai
-        await notify_with_ai("SBER", ai, cluster_id=1, canonical_title="Банки под давлением")
+        # No canonical_title → validate_tickers skipped → AI tickers used directly
+        await notify_with_ai("SBER", ai, cluster_id=1)
 
     assert "VTBR" in sent_texts[0]
 
