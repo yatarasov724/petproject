@@ -475,7 +475,7 @@ async def handle_update(db: DBConnection, update: dict) -> None:
                 f"С возвращением, {_md_escape(first_name)}\\!\n\n"
                 f"Твой портфель: {tickers_str}"
             )
-            await send_dm(user_id, welcome_back, reply_markup={"remove_keyboard": True})
+            await send_dm(user_id, welcome_back, reply_markup=_REPLY_KEYBOARD)
             await _send_menu(user_id, is_admin=user_id in ADMIN_USER_IDS)
         else:
             # New user — wizard step 1
@@ -629,7 +629,7 @@ async def _handle_callback(db: DBConnection, cbq: dict) -> None:
         await send_dm(
             user_id,
             _onb_step5_text(len(tickers), s["min_score"], s["quiet_from"], s["quiet_to"]),
-            reply_markup={"remove_keyboard": True},
+            reply_markup=_REPLY_KEYBOARD,
         )
         return
 

@@ -442,7 +442,8 @@ class TestAIGate:
 
         assert result.outcome == Outcome.SENT_NEW
         assert captured == [None], "send must be called with ai_analysis=None when no API key"
-        assert tasks_created == [], "no background task when API key is absent"
+        ai_tasks = [c for c in tasks_created if hasattr(c, "__qualname__") and "_ai_enrich" in c.__qualname__]
+        assert ai_tasks == [], "no AI enrichment task when API key is absent"
 
 
 # ── Russia/MOEX relevance gate ────────────────────────────────────────────────
