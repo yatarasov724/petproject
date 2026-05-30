@@ -15,7 +15,7 @@ Returns a comma-joined string of valid tickers (same format as DB column).
 import logging
 from typing import Optional
 
-from app.ai.filter import TICKER_KEYWORDS
+from app.ai.filter import TICKER_KEYWORDS, word_match
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,6 @@ def validate_tickers(tickers_str: Optional[str], cluster_title: str) -> str:
         return ""
 
     tickers = [t.strip() for t in tickers_str.split(",") if t.strip()]
-    title_lower = cluster_title.lower()
     valid: list[str] = []
 
     for ticker in tickers:
@@ -50,7 +49,7 @@ def validate_tickers(tickers_str: Optional[str], cluster_title: str) -> str:
             continue
 
         keywords = TICKER_KEYWORDS.get(ticker, [])
-        if any(kw in title_lower for kw in keywords):
+        if any(word_match(kw, cluster_title) for kw in keywords):
             valid.append(ticker)
         else:
             logger.warning(

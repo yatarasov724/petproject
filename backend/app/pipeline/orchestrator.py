@@ -474,7 +474,7 @@ async def _ai_enrich(
 
         if tickers_raw:
             from app.bot.portfolio import notify_with_ai
-            await notify_with_ai(tickers_raw, ai_analysis, cluster["id"])
+            await notify_with_ai(tickers_raw, ai_analysis, cluster["id"], canonical_title)
 
         logger.info(
             "AI enrich ok: cluster_id=%d",

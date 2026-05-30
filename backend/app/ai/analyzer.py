@@ -1,9 +1,9 @@
 """
-AI-powered news analysis via OpenRouter.
+AI-powered news analysis via OpenRouter (free tier).
 
-Uses the OpenAI-compatible chat completions endpoint.
+Uses openai/gpt-oss-120b:free — no balance required, 200 req/day limit.
 Called only for articles that passed the full pipeline (publishable events),
-so at most a few dozen calls per day — well within any free-tier quota.
+so at most a few dozen calls per day — well within free quota.
 
 Returns None on any failure so the pipeline always continues with static formatting.
 """
@@ -20,8 +20,8 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 _API_URL = "https://openrouter.ai/api/v1/chat/completions"
-_MODEL   = "meta-llama/llama-3.3-70b-instruct"
-_TIMEOUT = aiohttp.ClientTimeout(total=15)
+_MODEL   = "openai/gpt-oss-120b:free"
+_TIMEOUT = aiohttp.ClientTimeout(total=20)
 
 _SYSTEM_PROMPT = """\
 Ты обрабатываешь новостной текст и превращаешь его в короткий Telegram-пост для трейдеров и инвесторов.
@@ -143,8 +143,10 @@ SMLT (Самолёт), PIKK (ПИК), LSRG (ЛСР), ETLN (Эталон)
 ❌ МГКЛ → НЕ MTSS, НЕ FEES, НЕ AFLT. МГКЛ = MGKL (Мосгорломбард)
 ❌ МТС-Банк → НЕ MTSS. МТС-Банк = MTSB
 ❌ Озон Фармацевтика → НЕ OZON. Озон Фармацевтика = OZPH
-❌ AutoZone (американская компания) → [] (не торгуется на MOEX, тикера нет)
-❌ Иностранная компания (Goldman Sachs, Evercore, Apple, ...) → []
+❌ AutoZone (американская компания, тикер AZO) → [] (не торгуется на MOEX)
+❌ Иностранная компания (Goldman Sachs, Evercore, Apple, FalconX, Coinbase, Binance...) → []
+❌ Крипто-компании и крипто-биржи (FalconX, Coinbase, Bybit, Kraken, OKX...) → []
+❌ «Озоновый слой», «слой озона», «озоновая дыра» — природное явление, НЕ компания → []
 ❌ НМТП → НЕ VTBR. НМТП = NMTP
 ❌ Русснефть → НЕ LKOH, НЕ ROSN. Русснефть = RNFT
 ❌ Если компания есть в новости, но её тикера НЕТ в списке выше → обязательно []
@@ -178,22 +180,14 @@ _USER_TEMPLATE = "Заголовок: {title}\nТекст: {text}"
 _VALID_IMPACTS = frozenset({"positive", "negative"})
 _VALID_EMOJIS  = frozenset({"🟢", "🔴"})
 _VALID_TICKERS = frozenset({
-    # Нефть и газ
     "GAZP", "LKOH", "ROSN", "NVTK", "TATN", "SNGS", "ENPG", "TRNFP", "BANEP",
     "RNFT", "NMTP",
-    # Банки и финансы
     "SBER", "VTBR", "TCSG", "CBOM", "BSPB", "AFKS", "SVCB", "SPBE", "RENI", "MTSB",
-    # Металлы и горная добыча
     "GMKN", "CHMF", "NLMK", "MAGN", "PLZL", "ALRS", "POLY", "MTLR", "SELG", "RUAL", "RASP",
-    # Электроэнергетика
     "IRAO", "HYDR", "FEES", "MSRS", "MRKV", "MRKU", "MRKP", "MRKC",
-    # IT и телеком
     "YNDX", "MTSS", "RTKM", "VKCO", "POSI", "HHRU", "OZON", "DIAS",
-    # Транспорт
     "FLOT", "AFLT",
-    # Ритейл, агро, прочее
     "MGNT", "FIVE", "FIXP", "PHOR", "AGRO", "MOEX", "SGZH", "MGKL", "OZPH",
-    # Недвижимость
     "SMLT", "PIKK", "LSRG", "ETLN",
 })
 
@@ -201,18 +195,18 @@ _VALID_TICKERS = frozenset({
 @dataclass(frozen=True)
 class AIAnalysis:
     title:         str
-    impact:        str         # positive | negative
-    emoji:         str         # 🟢 | 🔴
+    impact:        str
+    emoji:         str
     summary:       str
     market_effect: str
-    affects:       str         # "акции · рубль · ОФЗ · сырьё"
-    tickers:       list[str]   # validated MOEX tickers, e.g. ["SBER", "GAZP"]
-    context:       str = ""    # why this matters now (from RAG), may be empty
+    affects:       str
+    tickers:       list[str]
+    context:       str = ""
 
 
-async def analyze(title: str, text: str = "", recent_context: list[str] | None = None) -> Optional[AIAnalysis]:
+async def analyze(title: str, text: str = "", recent_context: list[str] = []) -> Optional[AIAnalysis]:
     """
-    Analyze a publishable news headline via OpenRouter.
+    Analyze a publishable news headline via OpenRouter free tier.
     Returns AIAnalysis on success, None on any failure.
     """
     if not settings.openrouter_api_key:
@@ -260,7 +254,6 @@ async def analyze(title: str, text: str = "", recent_context: list[str] | None =
 
 
 def _validate(data: dict) -> Optional[AIAnalysis]:
-    """Coerce and validate LLM response. Returns None if any required field is missing."""
     try:
         ai_title      = str(data.get("title", "")).strip()
         summary       = str(data.get("summary", "")).strip()

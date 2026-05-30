@@ -73,7 +73,12 @@ async def notify(tickers_raw: str, canonical_title: str, cluster_id: int, score:
         )
 
 
-async def notify_with_ai(tickers_raw: str, ai_analysis: "AIAnalysis", cluster_id: int) -> None:
+async def notify_with_ai(
+    tickers_raw: str,
+    ai_analysis: "AIAnalysis",
+    cluster_id: int,
+    canonical_title: str = "",
+) -> None:
     """Send AI-enriched DM to all users subscribed to any ticker in this cluster."""
     tickers = [t.strip() for t in tickers_raw.split(",") if t.strip()]
     if not tickers:
@@ -89,7 +94,12 @@ async def notify_with_ai(tickers_raw: str, ai_analysis: "AIAnalysis", cluster_id
         metrics.inc(metrics.PORTFOLIO_NO_SUBS)
         return
 
-    dm_tickers = ai_analysis.tickers if ai_analysis.tickers else tickers
+    if ai_analysis.tickers and canonical_title:
+        from app.pipeline.ticker_validator import validate_tickers
+        safe = validate_tickers(",".join(ai_analysis.tickers), canonical_title)
+        dm_tickers = [t for t in safe.split(",") if t] if safe else tickers
+    else:
+        dm_tickers = ai_analysis.tickers if ai_analysis.tickers else tickers
     tickers_line = " · ".join(f"\\${t}" for t in dm_tickers)
 
     parts = [
