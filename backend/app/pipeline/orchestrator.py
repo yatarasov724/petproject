@@ -456,15 +456,24 @@ async def _ai_enrich(
     """
     try:
         recent_context: list[str] = []
-        if tickers_raw:
-            from app.db.database import get_db as _get_db
-            from app.db import queries as _queries
-            _db = _get_db()
-            try:
-                ticker_list = [t.strip() for t in tickers_raw.split(",") if t.strip()]
-                recent_context = _queries.get_recent_cluster_titles_for_tickers(_db, ticker_list)
-            finally:
-                _db.close()
+        from app.db.database import get_db as _get_db
+        from app.db import queries as _queries
+        _db = _get_db()
+        try:
+            ticker_list = [t.strip() for t in tickers_raw.split(",") if t.strip()]
+            ticker_ctx = _queries.get_recent_cluster_titles_for_tickers(_db, ticker_list) if tickers_raw else []
+            embed_ctx = (
+                _queries.get_similar_clusters_by_embedding(
+                    _db, cluster["embedding"], exclude_id=cluster["id"]
+                )
+                if cluster.get("embedding")
+                else []
+            )
+            seen = set(ticker_ctx)
+            extra = [s for s in embed_ctx if s not in seen]
+            recent_context = (ticker_ctx + extra)[:7]
+        finally:
+            _db.close()
 
         ai_analysis = await analyzer.analyze(title, content, recent_context=recent_context)
         if ai_analysis is None:
@@ -474,7 +483,11 @@ async def _ai_enrich(
 
         if tickers_raw:
             from app.bot.portfolio import notify_with_ai
-            await notify_with_ai(tickers_raw, ai_analysis, cluster["id"], canonical_title)
+            await notify_with_ai(
+                tickers_raw, ai_analysis, cluster["id"], canonical_title,
+                correlations=correlations,
+                event_type=score_result.event_type.value,
+            )
 
         logger.info(
             "AI enrich ok: cluster_id=%d",
