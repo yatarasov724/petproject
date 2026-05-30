@@ -21,7 +21,7 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 _API_URL = "https://openrouter.ai/api/v1/chat/completions"
-_MODEL   = "meta-llama/llama-3.3-70b-instruct"
+_MODEL   = "openai/gpt-oss-120b:free"
 _TIMEOUT = aiohttp.ClientTimeout(total=20)
 
 _SYSTEM_PROMPT = """\

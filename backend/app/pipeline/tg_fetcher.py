@@ -12,6 +12,7 @@ stays alive across poll cycles.
 
 import asyncio
 import logging
+import re
 from app.db.database import DBConnection
 from datetime import timezone
 from typing import Any
@@ -105,11 +106,7 @@ async def _fetch_channel(
             continue
 
         text = msg.text.strip()
-        # First non-empty line as the headline (capped at 150 chars)
-        first_line = next(
-            (line.strip() for line in text.split("\n") if line.strip()),
-            text[:150],
-        )[:150]
+        first_line = _extract_headline(text)
 
         tokens = tokenize(first_line)
         if not tokens:
@@ -147,3 +144,29 @@ async def _fetch_channel(
         },
     )
     return articles
+
+
+_HASHTAG_RE = re.compile(r'#\S+')
+_EMOJI_RE   = re.compile(
+    "["
+    "\U0001F000-\U0001FFFF"
+    "\U00002600-\U000027BF"
+    "\U0001F1E0-\U0001F1FF"
+    "\U00002700-\U000027BF"
+    "\U0000FE00-\U0000FE0F"
+    "\U0001F900-\U0001F9FF"
+    "\u2757\u26A0\u203C]+",
+    flags=re.UNICODE,
+)
+
+
+def _extract_headline(text: str) -> str:
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    if not lines:
+        return text[:150]
+    fallback = lines[0]
+    for line in lines:
+        cleaned = _EMOJI_RE.sub("", _HASHTAG_RE.sub("", line)).strip()
+        if len(cleaned) >= 5:
+            return line[:150]
+    return fallback[:150]

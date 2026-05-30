@@ -58,8 +58,7 @@ async def _set_my_commands() -> None:
         {"command": "portfolio", "description": "Мой портфель"},
         {"command": "calendar",  "description": "Ближайшие события"},
         {"command": "settings",  "description": "Настройки"},
-        {"command": "help",      "description": "Помощь"},
-        {"command": "feedback",  "description": "Обратная связь"},
+        {"command": "help",      "description": "Помощь и обратная связь"},
     ]
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:

@@ -715,8 +715,24 @@ def get_subscribed_users(db: DBConnection, tickers: list[str]) -> list[int]:
     return [r["user_id"] for r in rows]
 
 
+_MONTHS_SHORT = (
+    "", "янв", "фев", "мар", "апр", "май", "июн",
+    "июл", "авг", "сен", "окт", "ноя", "дек",
+)
+
+
+def _fmt_cluster_entry(title: str, updated_at: str) -> str:
+    """Format a historical cluster as '15 мая: title' for RAG context."""
+    try:
+        dt = datetime.fromisoformat(updated_at.rstrip("Z")).replace(tzinfo=timezone.utc)
+        date_str = f"{dt.day} {_MONTHS_SHORT[dt.month]}"
+    except Exception:
+        date_str = "?"
+    return f"{date_str}: {title}"
+
+
 def get_recent_cluster_titles_for_tickers(
-    db: DBConnection, tickers: list[str], limit: int = 5, days: int = 14
+    db: DBConnection, tickers: list[str], limit: int = 5, days: int = 30
 ) -> list[str]:
     """Return recent published cluster titles matching any of the tickers (RAG context)."""
     if not tickers:
@@ -726,7 +742,7 @@ def get_recent_cluster_titles_for_tickers(
     params = tuple(f"%{t}%" for t in tickers) + (cutoff, limit)
     rows = db.execute(
         f"""
-        SELECT canonical_title FROM event_clusters
+        SELECT canonical_title, last_updated_at FROM event_clusters
         WHERE ({ilike_clauses})
           AND last_updated_at > %s
           AND status IN ('published', 'updated')
@@ -735,7 +751,55 @@ def get_recent_cluster_titles_for_tickers(
         """,
         params,
     ).fetchall()
-    return [row["canonical_title"] for row in rows]
+    return [_fmt_cluster_entry(row["canonical_title"], row["last_updated_at"]) for row in rows]
+
+
+def get_similar_clusters_by_embedding(
+    db: DBConnection,
+    embedding_bytes: bytes,
+    limit: int = 3,
+    days: int = 30,
+    exclude_id: int = 0,
+) -> list[str]:
+    """Cosine similarity search over stored BYTEA embeddings (computed in Python/numpy).
+
+    Returns up to `limit` formatted strings 'DD мес: title' for clusters
+    semantically similar (cosine >= 0.50) to the given embedding.
+    """
+    if not embedding_bytes:
+        return []
+    import numpy as np
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    rows = db.execute(
+        """
+        SELECT id, canonical_title, last_updated_at, embedding
+        FROM event_clusters
+        WHERE first_seen_at >= %s
+          AND status IN ('published', 'updated')
+          AND embedding IS NOT NULL
+          AND id != %s
+        ORDER BY last_updated_at DESC
+        LIMIT 500
+        """,
+        (cutoff, exclude_id),
+    ).fetchall()
+    if not rows:
+        return []
+    query_vec = np.frombuffer(embedding_bytes, dtype="float32")
+    scored: list[tuple[float, dict]] = []
+    for row in rows:
+        try:
+            cand_vec = np.frombuffer(row["embedding"], dtype="float32")
+            sim = float(np.dot(query_vec, cand_vec))
+        except Exception:
+            continue
+        if sim >= 0.50:
+            scored.append((sim, row))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [
+        _fmt_cluster_entry(row["canonical_title"], row["last_updated_at"])
+        for _, row in scored[:limit]
+    ]
 
 
 def get_user_tickers(db: DBConnection, user_id: int) -> list[str]:

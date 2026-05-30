@@ -197,7 +197,19 @@ def _update_existing_cluster(
 
     existing_tickers = {t for t in (cluster["tickers"] or "").split(",") if t}
     new_tickers      = set(extract_tickers(article.title))
-    merged_tickers   = ",".join(sorted(existing_tickers | new_tickers))
+    # Защита от загрязнения тикеров: если у кластера уже есть тикеры и новые
+    # тикеры ПОЛНОСТЬЮ отличаются (нет пересечения) — это, вероятно, другая компания,
+    # попавшая в кластер из-за общей dividend/earnings-лексики. Не добавляем.
+    if existing_tickers and new_tickers and not (existing_tickers & new_tickers):
+        logger.debug(
+            "ticker contamination guard: cluster #%d has %s, article brings %s — skipping merge",
+            cluster["id"],
+            existing_tickers,
+            new_tickers,
+        )
+        merged_tickers = ",".join(sorted(existing_tickers))
+    else:
+        merged_tickers = ",".join(sorted(existing_tickers | new_tickers))
 
     queries.update_cluster(
         db,
