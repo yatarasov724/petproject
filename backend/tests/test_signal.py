@@ -122,3 +122,76 @@ async def test_build_signal_ai_exception_is_graceful():
         signal = await build_signal([], _ai(), "Заголовок", "rate_decision")
     assert signal.long_direction == ""
     assert signal.long_reason == ""
+
+
+# ── format_trade_dm ───────────────────────────────────────────────────────────
+
+from app.ai.signal import TradeSignal
+
+
+def test_format_trade_dm_structure_with_long_term():
+    from app.telegram.formatter import format_trade_dm
+    signal = TradeSignal(
+        short_direction="sell",
+        short_reason="По истории: -3.2% за сутки после подобных новостей",
+        long_direction="hold",
+        long_reason="Цикл ужесточения временный",
+    )
+    text = format_trade_dm("ЦБ повысил ставку", ["SBER"], signal)
+    assert "📊" in text
+    assert "SBER" in text
+    assert "ЦБ" in text
+    assert "⏱" in text
+    assert "Краткосрочно" in text
+    assert "🔴" in text           # sell
+    assert "По истории" in text
+    assert "📅" in text
+    assert "Долгосрочно" in text
+    assert "🟡" in text           # hold
+    assert "Цикл ужесточения" in text
+    assert "⚠️" in text
+    assert "инвестиционной рекомендацией" in text
+
+
+def test_format_trade_dm_multiple_tickers_in_header():
+    from app.telegram.formatter import format_trade_dm
+    signal = TradeSignal("buy", "По истории: +2.1%", "", "")
+    text = format_trade_dm("Заголовок", ["SBER", "VTBR"], signal)
+    assert "SBER" in text
+    assert "VTBR" in text
+
+
+def test_format_trade_dm_no_long_block_when_empty():
+    from app.telegram.formatter import format_trade_dm
+    signal = TradeSignal("hold", "По истории: +0.4%", "", "")
+    text = format_trade_dm("Заголовок", ["SBER"], signal)
+    assert "Долгосрочно" not in text
+    assert "📅" not in text
+
+
+def test_format_trade_dm_insufficient_data_shown_when_no_reason():
+    from app.telegram.formatter import format_trade_dm
+    signal = TradeSignal("sell", "", "", "")
+    text = format_trade_dm("Заголовок", ["SBER"], signal)
+    assert "недостаточно данных" in text
+
+
+def test_format_trade_dm_buy_shows_green_emoji():
+    from app.telegram.formatter import format_trade_dm
+    signal = TradeSignal("buy", "По истории: +2.0%", "", "")
+    text = format_trade_dm("Заголовок", ["SBER"], signal)
+    assert "🟢" in text
+
+
+def test_format_trade_dm_sell_shows_red_emoji():
+    from app.telegram.formatter import format_trade_dm
+    signal = TradeSignal("sell", "По истории: -2.0%", "", "")
+    text = format_trade_dm("Заголовок", ["SBER"], signal)
+    assert "🔴" in text
+
+
+def test_format_trade_dm_hold_shows_yellow_emoji():
+    from app.telegram.formatter import format_trade_dm
+    signal = TradeSignal("hold", "По истории: +0.5%", "", "")
+    text = format_trade_dm("Заголовок", ["SBER"], signal)
+    assert "🟡" in text
