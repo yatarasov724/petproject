@@ -56,6 +56,7 @@ ARTICLE_MAX_AGE_HOURS = 24
 # Lower than clusterer.COSINE_THRESHOLD (0.80) to catch near-duplicate clusters that slipped
 # through the dedup stage due to differently-worded headlines from different sources.
 DUP_GUARD_COSINE_THRESHOLD = 0.75
+DUP_GUARD_HOURS = 12  # window for cross-cluster duplicate guard
 
 logger = logging.getLogger(__name__)
 
@@ -232,7 +233,7 @@ async def _run(db: DBConnection, article: RawArticle) -> ArticleResult:
             )
 
         sent_clusters = queries.get_recently_sent_clusters(
-            db, within_hours=COOLDOWN_HOURS, exclude_cluster_id=cluster["id"]
+            db, within_hours=DUP_GUARD_HOURS, exclude_cluster_id=cluster["id"]
         )
         cluster_tokens   = cluster["title_tokens"]
         cluster_emb      = cluster["embedding"]

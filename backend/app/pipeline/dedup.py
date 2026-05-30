@@ -60,7 +60,7 @@ logger = logging.getLogger(__name__)
 
 # Near-dedup configuration
 JACCARD_THRESHOLD        = 0.35
-NEAR_DEDUP_WINDOW_HOURS  = 4   # only compare against articles seen in this window
+NEAR_DEDUP_WINDOW_HOURS  = 24  # only compare against articles seen in this window
 NEAR_DEDUP_CANDIDATES    = 50  # max candidates returned by pg_trgm pre-filter
 
 # Containment-based near-dedup (Stage 2b) — catches length-asymmetric duplicates
