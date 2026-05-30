@@ -94,6 +94,12 @@ _AFFECTS: dict[EventType, str] = {
     EventType.NOISE:            "акции",
 }
 
+_DIRECTION_LABEL: dict[str, str] = {
+    "buy":  "🟢 Покупать",
+    "sell": "🔴 Продавать",
+    "hold": "🟡 Держать",
+}
+
 
 def format_message(
     cluster: Any,
@@ -133,12 +139,16 @@ def format_message(
         parts = [
             title_line,
             "",
+            _esc(ai_analysis.summary),
+            "",
             f"_Для рынка:_ {_esc(ai_analysis.market_effect)}",
         ]
         if ticker_line:
             parts += ["", ticker_line]
         elif ai_analysis.affects:
             parts += ["", f"Влияет на: {_esc(ai_analysis.affects)}"]
+        if ai_analysis.context:
+            parts += ["", f"_{_esc(ai_analysis.context)}_"]
     else:
         badge = _BADGE.get(score_result.event_type, "РЫНКИ")
         if decision == Decision.UPDATE:
@@ -207,6 +217,44 @@ def format_digest(
         lines += ["", f"_{_esc(ai_digest.summary)}_"]
 
     return "\n".join(lines)
+
+
+def format_trade_dm(title: str, tickers: list, signal: Any) -> str:
+    """
+    Format a TradeSignal as a MarkdownV2 Telegram DM.
+
+    title   — raw canonical title (will be escaped)
+    tickers — list of MOEX tickers, e.g. ["SBER", "VTBR"]
+    signal  — TradeSignal instance
+    """
+    ticker_str  = " · ".join(f"${t}" for t in tickers)
+    short_label = _DIRECTION_LABEL.get(signal.short_direction, "🟡 Держать")
+
+    parts = [
+        f"📊 *{ticker_str}* — {_esc(title)}",
+        "",
+        f"⏱ *Краткосрочно:* {short_label}",
+    ]
+
+    if signal.short_reason:
+        parts.append(_esc(signal.short_reason))
+    else:
+        parts.append("_" + _esc("(недостаточно данных)") + "_")
+
+    if signal.long_direction:
+        long_label = _DIRECTION_LABEL.get(signal.long_direction, "🟡 Держать")
+        parts += [
+            "",
+            f"📅 *Долгосрочно:* {long_label}",
+            _esc(signal.long_reason),
+        ]
+
+    parts += [
+        "",
+        "⚠️ _Не является инвестиционной рекомендацией_",
+    ]
+
+    return "\n".join(parts)
 
 
 def _format_tickers(tickers: Optional[str]) -> str:
