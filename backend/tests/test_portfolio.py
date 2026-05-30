@@ -201,10 +201,11 @@ async def test_notify_message_contains_ticker_and_title(db):
 
 
 @pytest.mark.asyncio
-async def test_notify_with_ai_sends_enriched_dm(db):
+async def test_notify_with_ai_sends_trade_signal_dm(db):
     queries.set_user_tickers(db, 111, ["SBER"])
 
     from app.ai.analyzer import AIAnalysis
+    from app.ai.signal import TradeSignal
     ai = AIAnalysis(
         title="ЦБ сохранил ставку",
         impact="positive",
@@ -213,8 +214,9 @@ async def test_notify_with_ai_sends_enriched_dm(db):
         market_effect="поддержка для ОФЗ и банков",
         affects="ОФЗ · акции",
         tickers=["SBER"],
-        context="На фоне замедления инфляции",
+        context="",
     )
+    mock_signal = TradeSignal("buy", "По истории: +1.8%", "hold", "Краткосрочная волатильность спадёт")
 
     sent_texts: list[str] = []
 
@@ -225,68 +227,60 @@ async def test_notify_with_ai_sends_enriched_dm(db):
     with (
         patch("app.bot.portfolio.get_db", return_value=db),
         patch("app.bot.portfolio.send_dm", side_effect=capture_dm),
+        patch("app.bot.portfolio.build_signal", AsyncMock(return_value=mock_signal)),
         patch.object(db, "close"),
     ):
         from app.bot.portfolio import notify_with_ai
-        await notify_with_ai("SBER", ai, cluster_id=1)
+        await notify_with_ai("SBER", ai, cluster_id=1, canonical_title="ЦБ сохранил ставку")
 
     assert len(sent_texts) == 1
     msg = sent_texts[0]
-    assert "🟢" in msg
-    assert "ЦБ сохранил ставку" in msg
-    assert "Банк России оставил ставку" in msg
-    assert "поддержка для ОФЗ" in msg
+    assert "📊" in msg
     assert "SBER" in msg
+    assert "Краткосрочно" in msg
+    assert "инвестиционной рекомендацией" in msg
 
 
 @pytest.mark.asyncio
-async def test_notify_with_ai_omits_empty_context(db):
-    queries.set_user_tickers(db, 111, ["SBER"])
-
+async def test_notify_with_ai_skips_no_subscribers():
+    """No DM sent when no user subscribed to the tickers."""
     from app.ai.analyzer import AIAnalysis
     ai = AIAnalysis(
-        title="ЦБ сохранил ставку",
-        impact="positive",
-        emoji="🟢",
-        summary="Банк России оставил ставку на уровне 21%",
-        market_effect="поддержка для ОФЗ",
-        affects="ОФЗ · акции",
-        tickers=["SBER"],
+        title="Заголовок",
+        impact="negative",
+        emoji="🔴",
+        summary="...",
+        market_effect="...",
+        affects="",
+        tickers=["NVTK"],
         context="",
     )
-
-    sent_texts: list[str] = []
-
-    async def capture_dm(user_id, text, **kwargs):
-        sent_texts.append(text)
-        return 42
-
-    with (
-        patch("app.bot.portfolio.get_db", return_value=db),
-        patch("app.bot.portfolio.send_dm", side_effect=capture_dm),
-        patch.object(db, "close"),
-    ):
+    mock_dm = AsyncMock(return_value=None)
+    with patch("app.bot.portfolio.send_dm", mock_dm):
         from app.bot.portfolio import notify_with_ai
-        await notify_with_ai("SBER", ai, cluster_id=1)
+        await notify_with_ai("NVTK", ai, cluster_id=5, canonical_title="Заголовок")
 
-    assert "📌" not in sent_texts[0]
+    mock_dm.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_notify_with_ai_uses_ai_tickers(db):
+async def test_notify_with_ai_includes_all_tickers_in_dm(db):
+    """Header shows all tickers when AI analysis has multiple."""
     queries.set_user_tickers(db, 111, ["SBER"])
 
     from app.ai.analyzer import AIAnalysis
+    from app.ai.signal import TradeSignal
     ai = AIAnalysis(
         title="Банки под давлением",
         impact="negative",
         emoji="🔴",
-        summary="Санкции затронули банковский сектор",
-        market_effect="давление на банки",
+        summary="...",
+        market_effect="...",
         affects="акции",
         tickers=["SBER", "VTBR"],
         context="",
     )
+    mock_signal = TradeSignal("sell", "", "", "")
 
     sent_texts: list[str] = []
 
@@ -297,10 +291,11 @@ async def test_notify_with_ai_uses_ai_tickers(db):
     with (
         patch("app.bot.portfolio.get_db", return_value=db),
         patch("app.bot.portfolio.send_dm", side_effect=capture_dm),
+        patch("app.bot.portfolio.build_signal", AsyncMock(return_value=mock_signal)),
         patch.object(db, "close"),
     ):
         from app.bot.portfolio import notify_with_ai
-        await notify_with_ai("SBER", ai, cluster_id=1)
+        await notify_with_ai("SBER", ai, cluster_id=1, canonical_title="Банки под давлением")
 
     assert "VTBR" in sent_texts[0]
 

@@ -75,6 +75,14 @@ def _no_real_ai():
 
 
 @pytest.fixture(autouse=True)
+def _no_real_signal_ai():
+    """Prevent OpenRouter calls from _ai_long_term in every test."""
+    from unittest.mock import AsyncMock
+    with patch("app.ai.signal._ai_long_term", new=AsyncMock(return_value=("", ""))):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _no_real_embedder():
     """
     Disable sentence-transformers inference in tests.
