@@ -108,65 +108,64 @@ def format_message(
     ai_analysis: Optional[AIAnalysis] = None,
     correlations: Optional[list] = None,
 ) -> str:
+    """Compact Bloomberg-style MarkdownV2 channel message.
+
+    With AI:
+      🔴 *СТАВКА ЦБ* · 14:32
+
+      *ЦБ повысил ставку до 21%*
+      _Давление на акции и облигации_
+
+      $SBER $VTBR
+
+    Fallback:
+      📰 *СТАВКА ЦБ* · 14:32
+
+      *ЦБ повысил ключевую ставку до 21%*
+
+      $SBER $VTBR
     """
-    Returns a MarkdownV2-formatted Telegram message.
-    All dynamic fields pass through _esc() exactly once before assembly.
+    from datetime import timedelta
+    is_update = decision == Decision.UPDATE
+    badge     = _BADGE.get(score_result.event_type, "РЫНКИ")
 
-    With AI analysis:
-      🟢 *ЗАГОЛОВОК*
-      Дескрипшн
+    ts_field = "last_updated_at" if is_update else "first_seen_at"
+    ts_raw   = cluster.get(ts_field) or cluster.get("first_seen_at")
+    try:
+        dt_utc = datetime.fromisoformat(str(ts_raw).rstrip("Z")).replace(tzinfo=timezone.utc)
+    except Exception:
+        dt_utc = datetime.now(timezone.utc)
+    time_str = (dt_utc + timedelta(hours=3)).strftime("%H:%M")
 
-      _Для рынка:_ эффект
-
-      Влияет на: акции · рубль · ОФЗ
-
-    Fallback (no AI):
-      *↻ BADGE* (UPDATE) or *BADGE*
-
-      Заголовок
-
-      Влияет на: акции · рубль · ОФЗ
-    """
-    # AI-extracted tickers take priority over keyword-matched cluster tickers
     if ai_analysis and ai_analysis.tickers:
-        ticker_line = " · ".join(f"\\${t}" for t in ai_analysis.tickers)
+        ticker_line = " ".join(f"\\${t}" for t in ai_analysis.tickers)
     else:
-        ticker_line = _format_tickers(cluster["tickers"])
+        ticker_line = _format_tickers_compact(cluster["tickers"])
 
     if ai_analysis:
-        prefix     = "↻ " if decision == Decision.UPDATE else ""
-        title_line = f"{ai_analysis.emoji} *{_esc(prefix + ai_analysis.title)}*"
-        parts = [
-            title_line,
+        emoji     = "🔄" if is_update else ai_analysis.emoji
+        badge_str = f"↻ {badge}" if is_update else badge
+        parts     = [
+            f"{emoji} *{_esc(badge_str)}* · {time_str}",
             "",
-            _esc(ai_analysis.summary),
-            "",
-            f"_Для рынка:_ {_esc(ai_analysis.market_effect)}",
+            f"*{_esc(ai_analysis.title)}*",
         ]
-        if ticker_line:
-            parts += ["", ticker_line]
-        elif ai_analysis.affects:
-            parts += ["", f"Влияет на: {_esc(ai_analysis.affects)}"]
-        if ai_analysis.context:
-            parts += ["", f"_{_esc(ai_analysis.context)}_"]
+        if ai_analysis.market_effect:
+            parts.append(f"_{_esc(ai_analysis.market_effect)}_")
     else:
-        badge = _BADGE.get(score_result.event_type, "РЫНКИ")
-        if decision == Decision.UPDATE:
-            badge = f"↻ {badge}"
-        parts = [
-            f"*{_esc(badge)}*",
+        emoji     = "🔄" if is_update else "📰"
+        badge_str = f"↻ {badge}" if is_update else badge
+        parts     = [
+            f"{emoji} *{_esc(badge_str)}* · {time_str}",
             "",
-            _esc(cluster["canonical_title"]),
+            f"*{_esc(cluster['canonical_title'])}*",
         ]
-        if ticker_line:
-            parts += ["", ticker_line]
-        else:
-            affects = _AFFECTS.get(score_result.event_type, "акции")
-            parts += ["", f"Влияет на: {_esc(affects)}"]
 
-    corr_line = _format_correlations(correlations or [])
-    if corr_line:
-        parts += ["", corr_line]
+    if ticker_line:
+        parts += ["", ticker_line]
+    elif not ai_analysis:
+        affects = _AFFECTS.get(score_result.event_type, "акции")
+        parts += ["", f"_{_esc(affects)}_"]
 
     return "\n".join(parts)
 
@@ -262,6 +261,13 @@ def _format_tickers(tickers: Optional[str]) -> str:
     if not tickers:
         return ""
     return " · ".join(f"${t}" for t in tickers.split(",") if t)
+
+
+def _format_tickers_compact(tickers: Optional[str]) -> str:
+    """Format comma-separated tickers as '$GAZP $SBER' (space-separated)."""
+    if not tickers:
+        return ""
+    return " ".join(f"\\${t}" for t in tickers.split(",") if t)
 
 
 def _format_correlations(correlations: list) -> str:
