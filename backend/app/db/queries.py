@@ -452,23 +452,24 @@ def get_cluster(
 
 def get_top_sent_clusters(
     db: DBConnection,
-    within_hours: int = 24,
+    since_dt: datetime,
     limit: int = 10,
 ) -> list[Any]:
     """
     Return the top published clusters for the daily digest.
 
-    Selects clusters that were actually sent (last_sent_at is set) within the
-    window, ordered by (best_score * source_count) descending — the same signal
-    the publisher uses to decide importance.
+    Selects clusters first seen on or after since_dt (start of today in MSK)
+    that have been published to Telegram, ordered by (best_score * source_count)
+    descending.
     """
-    cutoff = _iso(datetime.now(timezone.utc) - timedelta(hours=within_hours))
+    cutoff = _iso(since_dt)
     return db.execute(
         """
         SELECT id, canonical_title, best_score, source_count,
                tickers, keywords, title_tokens, last_sent_at
         FROM   event_clusters
-        WHERE  last_sent_at >= %s
+        WHERE  first_seen_at >= %s
+          AND  last_sent_at IS NOT NULL
           AND  status IN ('published', 'updated')
         ORDER  BY best_score * source_count DESC
         LIMIT  %s
@@ -1399,3 +1400,60 @@ def update_cluster_tickers(db: DBConnection, cluster_id: int, tickers: str) -> N
         (tickers or None, cluster_id),
     )
     db.commit()
+
+
+# ── metrics ───────────────────────────────────────────────────────────────────
+
+def log_bot_command(db: DBConnection, telegram_id: int, command: str) -> None:
+    db.execute(
+        "INSERT INTO bot_command_log (telegram_id, command) VALUES (%s, %s)",
+        (telegram_id, command),
+    )
+    db.commit()
+
+
+def get_metrics_delta(db: DBConnection, hours: int) -> dict:
+    row = db.execute(
+        """
+        SELECT
+          MAX(articles_fetched)   - MIN(articles_fetched)   AS fetched,
+          MAX(articles_exact_dup) - MIN(articles_exact_dup) AS exact_dup,
+          MAX(articles_near_dup)  - MIN(articles_near_dup)  AS near_dup,
+          MAX(articles_noise)     - MIN(articles_noise)      AS noise,
+          MAX(events_published)   - MIN(events_published)    AS published,
+          MAX(tg_sent_ok)         - MIN(tg_sent_ok)          AS tg_ok,
+          MAX(tg_sent_fail)       - MIN(tg_sent_fail)        AS tg_fail,
+          MAX(tg_rate_limited)    - MIN(tg_rate_limited)     AS rate_limited,
+          COUNT(*) AS snapshot_count
+        FROM metrics_snapshots
+        WHERE ts >= NOW() - make_interval(hours => %s)
+        """,
+        (hours,),
+    ).fetchone()
+    return dict(row) if row else {}
+
+
+def get_user_stats(db: DBConnection, hours: int) -> dict:
+    total = db.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
+    new_users = db.execute(
+        """
+        SELECT COUNT(*) AS n FROM users
+        WHERE created_at::timestamptz >= NOW() - make_interval(hours => %s)
+        """,
+        (hours,),
+    ).fetchone()["n"]
+    active = db.execute(
+        """
+        SELECT COUNT(DISTINCT telegram_id) AS n FROM bot_command_log
+        WHERE ts >= NOW() - make_interval(hours => %s)
+        """,
+        (hours,),
+    ).fetchone()["n"]
+    commands_n = db.execute(
+        """
+        SELECT COUNT(*) AS n FROM bot_command_log
+        WHERE ts >= NOW() - make_interval(hours => %s)
+        """,
+        (hours,),
+    ).fetchone()["n"]
+    return {"total": total, "new": new_users, "active": active, "commands": commands_n}

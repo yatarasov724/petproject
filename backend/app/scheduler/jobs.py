@@ -17,6 +17,7 @@ import json
 import logging
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from app.core import metrics
 import app.core.tg_client as _tg_client
@@ -45,9 +46,11 @@ _SILENCE_WARN_HOURS  = 2   # show ⚠️ in heartbeat text
 _SILENCE_ALERT_HOURS = 3   # send dedicated ops alert
 _SILENCE_ALERT_COOLDOWN_H = 2  # don't re-fire the dedicated alert within this window
 _last_silence_alert: datetime | None = None
+_last_snapshot_ts: datetime | None = None
 
 _DIGEST_LIMIT     = 10  # max clusters in the digest
 _DIGEST_PRE_FETCH = 30  # fetch 3× before RF filter to have enough candidates
+_MSK = ZoneInfo("Europe/Moscow")
 
 
 async def poll_job() -> None:
@@ -125,7 +128,7 @@ async def heartbeat_job() -> None:
     Also fires alerts for dead sources and publish silence.
     No-ops if TELEGRAM_OPS_CHAT_ID is not configured.
     """
-    global _alerted_dead, _last_silence_alert
+    global _alerted_dead, _last_silence_alert, _last_snapshot_ts
 
     db = get_db()
     try:
@@ -205,22 +208,27 @@ async def heartbeat_job() -> None:
                 )
                 _alerted_dead.add(src["id"])
 
+
+        # ── hourly metrics snapshot ───────────────────────────────────────────
+        if _last_snapshot_ts is None or (now - _last_snapshot_ts).total_seconds() >= 3600:
+            metrics.save_snapshot(db)
+            _last_snapshot_ts = now
+
     except Exception:
         logger.exception("heartbeat_job crashed")
     finally:
         db.close()
 
 
-async def digest_job(within_hours: int, label: str) -> None:
+async def digest_job(label: str) -> None:
     """
     Send a daily digest of the top published events to the main channel.
 
-    within_hours — how far back to look for sent clusters.
-    label        — display time shown in the header, e.g. "22:00" (MSK).
+    label — display time shown in the header, e.g. "22:00" (MSK).
 
     Selection:
-      1. Fetch up to _DIGEST_PRE_FETCH candidates ordered by score*source_count.
-      2. Keep only Russia/MOEX-relevant ones via _is_russia_relevant().
+      1. Fetch up to _DIGEST_PRE_FETCH candidates first seen today (MSK midnight).
+      2. Keep only Russia/MOEX-relevant ones via is_russia_relevant().
       3. Take the top _DIGEST_LIMIT of what remains.
     """
     db = get_db()
@@ -245,16 +253,20 @@ async def digest_job(within_hours: int, label: str) -> None:
             )
             return
 
+        # Start of today in MSK (midnight), converted to UTC for DB comparison.
+        now_msk = datetime.now(_MSK)
+        since_dt = now_msk.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+
         candidates = queries.get_top_sent_clusters(
-            db, within_hours=within_hours, limit=_DIGEST_PRE_FETCH
+            db, since_dt=since_dt, limit=_DIGEST_PRE_FETCH
         )
         clusters = [c for c in candidates if is_russia_relevant(c)][:_DIGEST_LIMIT]
 
         if not clusters:
             logger.info(
-                "digest_job: no Russia-relevant clusters in the last %dh — skipping",
-                within_hours,
-                extra={"event": "digest_skipped", "within_hours": within_hours},
+                "digest_job: no Russia-relevant clusters for today (since %s MSK) — skipping",
+                now_msk.strftime("%Y-%m-%d"),
+                extra={"event": "digest_skipped", "since": since_dt.isoformat()},
             )
             return
 

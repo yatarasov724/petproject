@@ -54,7 +54,7 @@ def start() -> None:
     )
     # Daily digest at 22:00 MSK (19:00 UTC) — top-10 events of the full day
     _scheduler.add_job(
-        partial(digest_job, within_hours=24, label="22:00"),
+        partial(digest_job, label="22:00"),
         trigger="cron",
         hour=19,
         minute=0,
