@@ -125,17 +125,8 @@ def format_message(
 
       $SBER $VTBR
     """
-    from datetime import timedelta
     is_update = decision == Decision.UPDATE
     badge     = _BADGE.get(score_result.event_type, "РЫНКИ")
-
-    ts_field = "last_updated_at" if is_update else "first_seen_at"
-    ts_raw   = cluster.get(ts_field) or cluster.get("first_seen_at")
-    try:
-        dt_utc = datetime.fromisoformat(str(ts_raw).rstrip("Z")).replace(tzinfo=timezone.utc)
-    except Exception:
-        dt_utc = datetime.now(timezone.utc)
-    time_str = (dt_utc + timedelta(hours=3)).strftime("%H:%M")
 
     if ai_analysis and ai_analysis.tickers:
         ticker_line = " ".join(f"\\${t}" for t in ai_analysis.tickers)
@@ -146,7 +137,7 @@ def format_message(
         emoji     = "🔄" if is_update else ai_analysis.emoji
         badge_str = f"↻ {badge}" if is_update else badge
         parts     = [
-            f"{emoji} *{_esc(badge_str)}* · {time_str}",
+            f"{emoji} *{_esc(badge_str)}*",
             "",
             f"*{_esc(ai_analysis.title)}*",
         ]
@@ -156,7 +147,7 @@ def format_message(
         emoji     = "🔄" if is_update else "📰"
         badge_str = f"↻ {badge}" if is_update else badge
         parts     = [
-            f"{emoji} *{_esc(badge_str)}* · {time_str}",
+            f"{emoji} *{_esc(badge_str)}*",
             "",
             f"*{_esc(cluster['canonical_title'])}*",
         ]
@@ -237,8 +228,6 @@ def format_trade_dm(title: str, tickers: list, signal: Any) -> str:
 
     if signal.short_reason:
         parts.append(_esc(signal.short_reason))
-    else:
-        parts.append("_" + _esc("(недостаточно данных)") + "_")
 
     if signal.long_direction:
         long_label = _DIRECTION_LABEL.get(signal.long_direction, "🟡 Держать")

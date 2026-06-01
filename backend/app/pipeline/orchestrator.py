@@ -374,10 +374,6 @@ async def _run(db: DBConnection, article: RawArticle) -> ArticleResult:
                     canonical_title=cluster["canonical_title"],
                 )
             )
-        elif tickers_raw:
-            asyncio.create_task(
-                _notify_portfolio(tickers_raw, cluster["canonical_title"], cluster["id"])
-            )
         asyncio.create_task(
             _detect_unknown_company(cluster["canonical_title"], bool(cluster["tickers"]))
         )
@@ -478,8 +474,6 @@ async def _ai_enrich(
 
         ai_analysis = await analyzer.analyze(title, content, recent_context=recent_context)
         if ai_analysis is None:
-            if tickers_raw:
-                await _notify_portfolio(tickers_raw, canonical_title, cluster["id"])
             return
 
         if tickers_raw:
@@ -501,8 +495,3 @@ async def _ai_enrich(
             cluster["id"],
             exc_info=True,
         )
-        if tickers_raw:
-            try:
-                await _notify_portfolio(tickers_raw, canonical_title, cluster["id"])
-            except Exception:
-                logger.warning("portfolio fallback DM also failed", exc_info=True)
