@@ -3,31 +3,19 @@ Telegram message formatter.
 
 Message format with AI analysis (MarkdownV2):
 ─────────────────────────────────────────────
-  🔴 *СТАВКА ЦБ*
+  🟢 *ЦБ сохранил ставку на уровне 21%*
 
-  ЦБ повысил ключевую ставку до 21 процента
+  Контекст: _Рынок ждал снижения, но ЦБ не увидел оснований. Давление на банки сохраняется._
 
-  _Что произошло:_ Банк России поднял ставку с 19% до 21%
-  _Для рынка:_ давление на акции и облигации, укрепление рубля
+  Следим за: _Следующее заседание ЦБ — 25 июля._
 
-  Влияет на: облигации · акции · рубль · ипотека
-  [Читать →](url)
+  $SBER $VTBR
 
 Fallback (no AI):
 ─────────────────
-  *СТАВКА ЦБ*
+  📰 *ЦБ сохранил ключевую ставку на уровне 21%*
 
-  ЦБ повысил ключевую ставку до 21 процента
-
-  Влияет на: облигации · акции · рубль · ипотека
-  [Читать →](url)
-
-Design decisions:
-  - No raw score — not meaningful to end user
-  - No source count — internal implementation detail
-  - "Влияет на:" is static per event type (reliable without LLM)
-  - UPDATE events get ↻ prefix on the badge
-  - AI analysis uses emoji prefix + AI-normalized title + summary + market_effect
+  $SBER $VTBR
 """
 
 from typing import Any
@@ -46,60 +34,6 @@ _MONTHS_RU = (
     "июля", "августа", "сентября", "октября", "ноября", "декабря",
 )
 
-# ── badge labels ──────────────────────────────────────────────────────────────
-
-_BADGE: dict[EventType, str] = {
-    EventType.SANCTIONS:        "САНКЦИИ",
-    EventType.WAR_ESCALATION:   "ЭСКАЛАЦИЯ",
-    EventType.DEFAULT:          "ДЕФОЛТ",
-    EventType.NATIONALIZATION:  "НАЦИОНАЛИЗАЦИЯ",
-    EventType.RATE_DECISION:    "СТАВКА ЦБ",
-    EventType.EARNINGS:         "ОТЧЁТНОСТЬ",
-    EventType.DIVIDENDS:        "ДИВИДЕНДЫ",
-    EventType.COMMODITY_SHOCK:  "СЫРЬЁ",
-    EventType.OPEC:             "ОПЕК",
-    EventType.M_AND_A:          "СДЕЛКА M&A",
-    EventType.IPO:              "IPO",
-    EventType.SPO_BUYBACK:      "SPO / ВЫКУП",
-    EventType.MACRO_DATA:       "МАКРО",
-    EventType.TRADE:            "ТОРГОВЛЯ",
-    EventType.REGULATION:       "РЕГУЛЯТОРИКА",
-    EventType.CORPORATE:        "КОРПОРАТИВ",
-    EventType.GEOPOLITICAL:     "ГЕОПОЛИТИКА",
-    EventType.UNKNOWN:          "РЫНКИ",
-    EventType.NOISE:            "РЫНКИ",
-}
-
-# ── "Влияет на:" lines ────────────────────────────────────────────────────────
-
-_AFFECTS: dict[EventType, str] = {
-    EventType.SANCTIONS:        "акции · рубль · ОФЗ · сырьё",
-    EventType.WAR_ESCALATION:   "акции · рубль · сырьё",
-    EventType.DEFAULT:          "ОФЗ · рубль · акции",
-    EventType.NATIONALIZATION:  "акции · сектор",
-    EventType.RATE_DECISION:    "ОФЗ · акции · рубль",
-    EventType.EARNINGS:         "акции",
-    EventType.DIVIDENDS:        "акции",
-    EventType.COMMODITY_SHOCK:  "нефть · сырьё · акции",
-    EventType.OPEC:             "нефть · акции · рубль",
-    EventType.M_AND_A:          "акции",
-    EventType.IPO:              "акции",
-    EventType.SPO_BUYBACK:      "акции",
-    EventType.MACRO_DATA:       "ОФЗ · рубль · акции",
-    EventType.TRADE:            "акции · сырьё · рубль",
-    EventType.REGULATION:       "акции · сектор",
-    EventType.CORPORATE:        "акции",
-    EventType.GEOPOLITICAL:     "акции · рубль · ОФЗ",
-    EventType.UNKNOWN:          "акции",
-    EventType.NOISE:            "акции",
-}
-
-_DIRECTION_LABEL: dict[str, str] = {
-    "buy":  "🟢 Покупать",
-    "sell": "🔴 Продавать",
-    "hold": "🟡 Держать",
-}
-
 
 def format_message(
     cluster: Any,
@@ -108,25 +42,8 @@ def format_message(
     ai_analysis: Optional[AIAnalysis] = None,
     correlations: Optional[list] = None,
 ) -> str:
-    """Compact Bloomberg-style MarkdownV2 channel message.
-
-    With AI:
-      🔴 *СТАВКА ЦБ* · 14:32
-
-      *ЦБ повысил ставку до 21%*
-      _Давление на акции и облигации_
-
-      $SBER $VTBR
-
-    Fallback:
-      📰 *СТАВКА ЦБ* · 14:32
-
-      *ЦБ повысил ключевую ставку до 21%*
-
-      $SBER $VTBR
-    """
+    """Telegram channel message in MarkdownV2."""
     is_update = decision == Decision.UPDATE
-    badge     = _BADGE.get(score_result.event_type, "РЫНКИ")
 
     if ai_analysis and ai_analysis.tickers:
         ticker_line = " ".join(f"\\${t}" for t in ai_analysis.tickers)
@@ -134,29 +51,25 @@ def format_message(
         ticker_line = _format_tickers_compact(cluster["tickers"])
 
     if ai_analysis:
-        emoji     = "🔄" if is_update else ai_analysis.emoji
-        badge_str = f"↻ {badge}" if is_update else badge
-        parts     = [
-            f"{emoji} *{_esc(badge_str)}*",
-            "",
-            f"*{_esc(ai_analysis.title)}*",
-        ]
-        if ai_analysis.market_effect:
-            parts.append(f"_{_esc(ai_analysis.market_effect)}_")
+        if is_update:
+            prefix = "🔄 "
+        elif ai_analysis.sentiment == "positive":
+            prefix = "🟢 "
+        elif ai_analysis.sentiment == "negative":
+            prefix = "🔴 "
+        else:
+            prefix = ""
+        parts = [f"{prefix}*{_esc(ai_analysis.summary)}*"]
+        if ai_analysis.what_behind:
+            parts += ["", f"Контекст: _{_esc(ai_analysis.what_behind)}_"]
+        if ai_analysis.watch_for:
+            parts += ["", f"Следим за: _{_esc(ai_analysis.watch_for)}_"]
     else:
-        emoji     = "🔄" if is_update else "📰"
-        badge_str = f"↻ {badge}" if is_update else badge
-        parts     = [
-            f"{emoji} *{_esc(badge_str)}*",
-            "",
-            f"*{_esc(cluster['canonical_title'])}*",
-        ]
+        emoji = "🔄" if is_update else "📰"
+        parts = [f"{emoji} *{_esc(cluster['canonical_title'])}*"]
 
     if ticker_line:
         parts += ["", ticker_line]
-    elif not ai_analysis:
-        affects = _AFFECTS.get(score_result.event_type, "акции")
-        parts += ["", f"_{_esc(affects)}_"]
 
     return "\n".join(parts)
 
@@ -209,47 +122,32 @@ def format_digest(
     return "\n".join(lines)
 
 
-def format_trade_dm(title: str, tickers: list, signal: Any) -> str:
+def format_ticker_dm(canonical_title: str, tickers: list, ai_analysis: AIAnalysis) -> str:
     """
-    Format a TradeSignal as a MarkdownV2 Telegram DM.
+    Format an AI-enriched post as a MarkdownV2 Telegram DM for portfolio subscribers.
 
-    title   — raw canonical title (will be escaped)
-    tickers — list of MOEX tickers, e.g. ["SBER", "VTBR"]
-    signal  — TradeSignal instance
+    canonical_title — raw title (used only as fallback if summary is empty)
+    tickers         — list of MOEX tickers, e.g. ["SBER", "VTBR"]
+    ai_analysis     — AIAnalysis instance
     """
-    ticker_str  = " · ".join(f"${t}" for t in tickers)
-    short_label = _DIRECTION_LABEL.get(signal.short_direction, "🟡 Держать")
+    ticker_str = " ".join(f"\\${t}" for t in tickers)
+    summary = ai_analysis.summary or canonical_title
 
-    parts = [
-        f"📊 *{ticker_str}* — {_esc(title)}",
-        "",
-        f"⏱ *Краткосрочно:* {short_label}",
-    ]
-
-    if signal.short_reason:
-        parts.append(_esc(signal.short_reason))
-
-    if signal.long_direction:
-        long_label = _DIRECTION_LABEL.get(signal.long_direction, "🟡 Держать")
-        parts += [
-            "",
-            f"📅 *Долгосрочно:* {long_label}",
-            _esc(signal.long_reason),
-        ]
-
-    parts += [
-        "",
-        "⚠️ _Не является инвестиционной рекомендацией_",
-    ]
+    if ai_analysis.sentiment == "positive":
+        prefix = "🟢 "
+    elif ai_analysis.sentiment == "negative":
+        prefix = "🔴 "
+    else:
+        prefix = ""
+    parts = [f"{prefix}*{_esc(summary)}*"]
+    if ai_analysis.what_behind:
+        parts += ["", f"Контекст: _{_esc(ai_analysis.what_behind)}_"]
+    if ai_analysis.watch_for:
+        parts += ["", f"Следим за: _{_esc(ai_analysis.watch_for)}_"]
+    if ticker_str:
+        parts += ["", ticker_str]
 
     return "\n".join(parts)
-
-
-def _format_tickers(tickers: Optional[str]) -> str:
-    """Format comma-separated tickers as '$GAZP · $SBER', or empty string."""
-    if not tickers:
-        return ""
-    return " · ".join(f"${t}" for t in tickers.split(",") if t)
 
 
 def _format_tickers_compact(tickers: Optional[str]) -> str:

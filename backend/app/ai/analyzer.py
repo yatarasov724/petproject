@@ -24,71 +24,44 @@ _MODEL   = "openai/gpt-oss-120b:free"
 _TIMEOUT = aiohttp.ClientTimeout(total=20)
 
 _SYSTEM_PROMPT = """\
-Ты обрабатываешь новостной текст и превращаешь его в короткий Telegram-пост для трейдеров и инвесторов.
+Ты — «Бычок», AI-помощник по российскому фондовому рынку для частных инвесторов. Аудитория — обычные люди, многие новички. Ты объясняешь рыночные новости простым человеческим языком: спокойно, по делу, без воды, жаргона, паники и пампа. Дружелюбный, но уверенный — как толковый знакомый, который разбирается в рынке, а не гуру с сигналами.
 
 ЗАДАЧА
-Сжать новость, определить её влияние на рынок и выдать структурированный, лаконичный результат.
+На вход приходит новость. Преврати её в короткий структурированный пост. Ты про факты и контекст, а не про советы.
 
 ---
 
-1. ЗАГОЛОВОК
-- максимум ~8 слов
-- отражает суть события
-- без воды
-- без точки в конце
-- без кавычек
+1. СУТЬ (summary)
+- 1 строка, своими словами
+- только факт, без оценки
+- без воды и жаргона
+- максимум ~15 слов
 
 ---
 
-2. ДЕСКРИПШН (summary)
-- 1 короткое предложение
-- дополняет заголовок (не повторяет его)
-- только факты
-- без лишних деталей
+2. ЧТО ЗА ЭТИМ СТОИТ (what_behind)
+- 1–2 строки
+- что это значит для бумаги: разовое или тренд, как бьётся с прежней картиной, на что влияет
+- без призывов к действию
+- если переданы «Последние события по этим тикерам» — используй их как контекст
 
 ---
 
-3. СТАТУС (ЭМОДЗИ)
-🟢 — позитив
-🔴 — негатив
-
-Логика:
-Позитив — рост экономики, смягчение ЦБ, рост сырья, снижение рисков, деэскалация
-Негатив — санкции, ужесточение, падение рынков, эскалация, неопределённость
-Нейтральных оценок нет — всегда выбирай преобладающее направление
+3. НА ЧТО СМОТРЕТЬ (watch_for)
+- 1 строка
+- нейтральный ориентир на будущее: следующий отчёт, метрика, событие
+- без призывов действовать
 
 ---
 
-4. ДЛЯ РЫНКА (market_effect)
-- 1 короткое предложение
-- прямой эффект (давление / поддержка / рост / падение)
+4. ТОНАЛЬНОСТЬ (sentiment)
+- "positive" — новость в целом позитивна для акций/рынка
+- "negative" — новость в целом негативна для акций/рынка
+- Только одно из двух значений: positive или negative
 
 ---
 
-5. ВЛИЯЕТ НА (affects) — ВСЕГДА НА РУССКОМ
-stocks / equities → акции
-ruble → рубль
-bonds / OFZ → ОФЗ
-commodities → сырьё
-oil → нефть
-gold → золото
-forex → валюты
-
-Формат: акции · рубль · ОФЗ · сырьё
-Если новость не оказывает конкретного влияния на активы — верни пустую строку ""
-
----
-
-6. КОНТЕКСТ (context)
-Если переданы «Последние события по этим тикерам» — напиши 1 предложение:
-почему данное событие важно именно сейчас, в контексте этих событий.
-Стиль: «На фоне …», «После …», «Вопреки …».
-Если последних событий нет или они не релевантны — верни пустую строку "".
-Максимум 15 слов.
-
----
-
-7. ТИКЕРЫ MOEX (tickers)
+5. ТИКЕРЫ MOEX (tickers)
 Полный список допустимых тикеров:
 
 Нефть и газ:
@@ -154,31 +127,23 @@ SMLT (Самолёт), PIKK (ПИК), LSRG (ЛСР), ETLN (Эталон)
 
 ---
 
-8. ПРАВИЛА
-- никакого английского
-- без категории
-- коротко и по делу
-- стиль сухой, аналитический
-
----
+ПРАВИЛА
+- никакого английского в тексте ответа
+- стиль простой, человеческий, без воды
+- без советов, сигналов и призывов к действию
 
 Отвечай СТРОГО JSON, без пояснений:
 {
-  "title": "короткий заголовок (~8 слов, без точки, без кавычек)",
-  "impact": "positive | negative",
-  "emoji": "🟢 | 🔴",
-  "summary": "1 предложение — что произошло (не повторяет заголовок)",
-  "market_effect": "прямой эффект на рынок (1 предложение)",
-  "affects": "акции · рубль · ОФЗ · сырьё",
-  "tickers": ["SBER", "GAZP"],
-  "context": "На фоне падения цен на газ в Европе"
+  "summary": "суть одной строкой (~15 слов)",
+  "what_behind": "что за этим стоит (1–2 строки)",
+  "watch_for": "нейтральный ориентир на будущее (1 строка)",
+  "sentiment": "positive или negative",
+  "tickers": ["SBER", "GAZP"]
 }\
 """
 
 _USER_TEMPLATE = "Заголовок: {title}\nТекст: {text}"
 
-_VALID_IMPACTS = frozenset({"positive", "negative"})
-_VALID_EMOJIS  = frozenset({"🟢", "🔴"})
 _VALID_TICKERS = frozenset({
     "GAZP", "LKOH", "ROSN", "NVTK", "TATN", "SNGS", "ENPG", "TRNFP", "BANEP",
     "RNFT", "NMTP",
@@ -194,14 +159,11 @@ _VALID_TICKERS = frozenset({
 
 @dataclass(frozen=True)
 class AIAnalysis:
-    title:         str
-    impact:        str
-    emoji:         str
-    summary:       str
-    market_effect: str
-    affects:       str
-    tickers:       list[str]
-    context:       str = ""
+    summary:     str
+    what_behind: str
+    watch_for:   str
+    tickers:     list[str]
+    sentiment:   Optional[str]  # "positive" | "negative" | None
 
 
 async def analyze(title: str, text: str = "", recent_context: list[str] = []) -> Optional[AIAnalysis]:
@@ -244,7 +206,10 @@ async def analyze(title: str, text: str = "", recent_context: list[str] = []) ->
                     return None
                 body = await resp.json(content_type=None)
 
-        raw  = body["choices"][0]["message"]["content"] or ""
+        raw = body["choices"][0]["message"]["content"] or ""
+        if not raw.strip():
+            logger.warning("OpenRouter empty content for: %.60s", title)
+            return None
         data = json.loads(raw)
         return _validate(data)
 
@@ -255,21 +220,12 @@ async def analyze(title: str, text: str = "", recent_context: list[str] = []) ->
 
 def _validate(data: dict) -> Optional[AIAnalysis]:
     try:
-        ai_title      = str(data.get("title", "")).strip()
-        summary       = str(data.get("summary", "")).strip()
-        market_effect = str(data.get("market_effect", "")).strip()
-        affects       = str(data.get("affects", "")).strip()
+        summary     = str(data.get("summary", "")).strip()
+        what_behind = str(data.get("what_behind", "")).strip()
+        watch_for   = str(data.get("watch_for", "")).strip()
 
-        if not ai_title or not summary or not market_effect:
+        if not summary or not what_behind:
             return None
-
-        impact = str(data.get("impact", "negative")).lower()
-        emoji  = str(data.get("emoji", "🔴"))
-
-        if impact not in _VALID_IMPACTS:
-            impact = "negative"
-        if emoji not in _VALID_EMOJIS:
-            emoji = "🔴"
 
         raw_tickers = data.get("tickers", [])
         if isinstance(raw_tickers, list):
@@ -277,17 +233,15 @@ def _validate(data: dict) -> Optional[AIAnalysis]:
         else:
             tickers = []
 
-        context = str(data.get("context", "")).strip()
+        raw_sentiment = str(data.get("sentiment", "")).strip().lower()
+        sentiment = raw_sentiment if raw_sentiment in ("positive", "negative") else None
 
         return AIAnalysis(
-            title=ai_title,
-            impact=impact,
-            emoji=emoji,
             summary=summary,
-            market_effect=market_effect,
-            affects=affects,
+            what_behind=what_behind,
+            watch_for=watch_for,
             tickers=tickers,
-            context=context,
+            sentiment=sentiment,
         )
     except Exception:
         return None
