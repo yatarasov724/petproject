@@ -13,12 +13,11 @@ if TYPE_CHECKING:
 
 import logging
 
-from app.ai.signal import build_signal
 from app.core import metrics
 from app.db import queries
 from app.db.database import get_db
 from app.telegram.client import send_dm
-from app.telegram.formatter import format_trade_dm, _esc
+from app.telegram.formatter import format_ticker_dm, _esc
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +80,7 @@ async def notify_with_ai(
     correlations:    list | None = None,
     event_type:      str = "",
 ) -> None:
-    """Send trade-signal DM to all users subscribed to any ticker in this cluster."""
+    """Send AI-enriched DM to all users subscribed to any ticker in this cluster."""
     tickers = [t.strip() for t in tickers_raw.split(",") if t.strip()]
     if not tickers:
         return
@@ -103,8 +102,7 @@ async def notify_with_ai(
     else:
         dm_tickers = ai_analysis.tickers if ai_analysis.tickers else tickers
 
-    signal = await build_signal(correlations or [], ai_analysis, canonical_title, event_type)
-    text = format_trade_dm(canonical_title, dm_tickers, signal)
+    text = format_ticker_dm(canonical_title, dm_tickers, ai_analysis)
 
     for user_id in user_ids:
         msg_id = await send_dm(user_id, text)

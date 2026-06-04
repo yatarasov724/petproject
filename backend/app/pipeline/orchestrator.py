@@ -476,6 +476,12 @@ async def _ai_enrich(
         if ai_analysis is None:
             return
 
+        # Edit the channel message with AI-enriched content.
+        from app.telegram.formatter import format_message as _fmt
+        from app.telegram import client as _tg
+        enriched_text = _fmt(cluster, score_result, pub.decision, ai_analysis, correlations)
+        await _tg.edit_message(message_id, enriched_text)
+
         if tickers_raw:
             from app.bot.portfolio import notify_with_ai
             await notify_with_ai(

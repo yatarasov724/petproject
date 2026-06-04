@@ -92,3 +92,38 @@ CLEANUP_RUNS        = "cleanup_runs"
 PORTFOLIO_DM_SENT   = "portfolio_dm_sent"
 PORTFOLIO_DM_FAILED = "portfolio_dm_failed"
 PORTFOLIO_NO_SUBS   = "portfolio_no_subs"    # events with tickers but 0 subscribers
+
+
+def save_snapshot(db) -> None:
+    """Persist current counter values to metrics_snapshots table."""
+    db.execute(
+        """
+        INSERT INTO metrics_snapshots (
+            articles_fetched, articles_exact_dup, articles_near_dup,
+            articles_noise, articles_processed,
+            clusters_created, clusters_updated,
+            events_published, events_updated, events_silenced,
+            tg_sent_ok, tg_sent_fail, tg_rate_limited,
+            portfolio_dm_sent, portfolio_dm_failed, pipeline_errors
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        (
+            _counts[ARTICLES_FETCHED],
+            _counts[ARTICLES_EXACT_DUP],
+            _counts[ARTICLES_NEAR_DUP],
+            _counts[ARTICLES_NOISE],
+            _counts[ARTICLES_PROCESSED],
+            _counts[CLUSTERS_CREATED],
+            _counts[CLUSTERS_UPDATED],
+            _counts[EVENTS_PUBLISHED],
+            _counts[EVENTS_UPDATED],
+            _counts[EVENTS_SILENCED],
+            _counts[TG_SENT_OK],
+            _counts[TG_SENT_FAIL],
+            _counts[TG_RATE_LIMITED],
+            _counts[PORTFOLIO_DM_SENT],
+            _counts[PORTFOLIO_DM_FAILED],
+            _counts[PIPELINE_ERRORS],
+        ),
+    )
+    db.commit()

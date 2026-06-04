@@ -21,6 +21,8 @@ from typing import Any
 
 from app.db.database import DBConnection
 from app.db import queries
+from app.core.alerting import send_ops as _send_ops
+from app.core.config import settings
 from app.telegram.client import answer_callback_query, edit_dm, send_dm
 from app.calendar.notify import format_portfolio_calendar
 
@@ -279,7 +281,7 @@ def _build_main_menu_keyboard(is_admin: bool = False) -> dict:
 
 def _help_text() -> str:
     return (
-        "ℹ️ *Beep — справка*\n\n"
+        "ℹ️ *Бычок — справка*\n\n"
         "📋 *Портфель* — /portfolio\n"
         "Выбери тикеры \\($SBER, $GAZP\\.\\.\\.\\)\\. Когда выйдет важная новость — получишь личный алерт\\.\n\n"
         "📅 *Календарь* — /calendar\n"
@@ -297,7 +299,7 @@ async def _send_menu(user_id: int, is_admin: bool = False) -> None:
     """Send the main inline menu to a user."""
     await send_dm(
         user_id,
-        "📊 *Beep*",
+        "📊 *Бычок*",
         reply_markup=_build_main_menu_keyboard(is_admin),
     )
 
@@ -437,6 +439,51 @@ def _get_internal_user_id(db: DBConnection, telegram_id: int) -> int | None:
 
 # ── update routing ────────────────────────────────────────────────────────────
 
+
+async def _handle_stats(db: "DBConnection", user_id: int, period: str) -> None:
+    hours = 168 if period == "week" else 24
+    label = "7 \u0434\u043d\u0435\u0439" if period == "week" else "24\u0447"
+
+    delta = queries.get_metrics_delta(db, hours)
+    user_stats = queries.get_user_stats(db, hours)
+
+    if delta.get("snapshot_count", 0) < 2:
+        n = delta.get("snapshot_count", 0)
+        await send_dm(user_id, f"\u23f3 \u0414\u0430\u043d\u043d\u044b\u0445 \u043f\u043e\u043a\u0430 \u043d\u0435\u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u043e \u2014 \u043d\u0443\u0436\u043d\u043e \u0445\u043e\u0442\u044f \u0431\u044b 2 \u0441\u043d\u0438\u043c\u043a\u0430 \u043d\u0430\u043a\u043e\u043f\u043b\u0435\u043d\u043e {n}\\.") 
+        return
+
+    fetched = delta.get("fetched") or 0
+    exact_dup = delta.get("exact_dup") or 0
+    near_dup = delta.get("near_dup") or 0
+    noise = delta.get("noise") or 0
+    published = delta.get("published") or 0
+    tg_ok = delta.get("tg_ok") or 0
+    tg_fail = delta.get("tg_fail") or 0
+    rate_limited = delta.get("rate_limited") or 0
+
+    def pct(n, total):
+        return f" \\({int(n / total * 100)}%\\)" if total else ""
+
+    text = (
+        f"\U0001f4ca *\u0421\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043a\u0430 \u0437\u0430 {_md_escape(label)}*\n\n"
+        f"*Pipeline:*\n"
+        f"  \u041f\u043e\u043b\u0443\u0447\u0435\u043d\u043e: `{fetched:,}`\n"
+        f"  \u0414\u0443\u0431\u043b\u0435\u0439 \u0442\u043e\u0447\u043d\u044b\u0445: `{exact_dup:,}`{pct(exact_dup, fetched)}\n"
+        f"  \u0414\u0443\u0431\u043b\u0435\u0439 \u043f\u043e\u0445\u043e\u0436\u0438\u0445: `{near_dup:,}`{pct(near_dup, fetched)}\n"
+        f"  \u0428\u0443\u043c\u0430: `{noise:,}`{pct(noise, fetched)}\n"
+        f"  \u041e\u043f\u0443\u0431\u043b\u0438\u043a\u043e\u0432\u0430\u043d\u043e: `{published:,}`\n\n"
+        f"*Telegram:*\n"
+        f"  \u041e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u043e: `{tg_ok:,}` \u2705\n"
+        f"  \u041e\u0448\u0438\u0431\u043e\u043a: `{tg_fail:,}` \u274c\n"
+        f"  Rate\\-limit: `{rate_limited:,}`\n\n"
+        f"*\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0438:*\n"
+        f"  \u0412\u0441\u0435\u0433\u043e: `{user_stats['total']:,}`\n"
+        f"  \u041d\u043e\u0432\u044b\u0445: `{user_stats['new']:,}`\n"
+        f"  \u0410\u043a\u0442\u0438\u0432\u043d\u044b\u0445: `{user_stats['active']:,}`\n"
+        f"  \u041a\u043e\u043c\u0430\u043d\u0434: `{user_stats['commands']:,}`"
+    )
+    await send_dm(user_id, text)
+
 async def handle_update(db: DBConnection, update: dict) -> None:
     if "callback_query" in update:
         await _handle_callback(db, update["callback_query"])
@@ -482,10 +529,8 @@ async def handle_update(db: DBConnection, update: dict) -> None:
             name = _md_escape(first_name)
             greeting = f"Привет, {name}\\!" if name else "Привет\\!"
             body = (
-                f"{greeting} Я *Beep* — бот для инвесторов\\.\n\n"
-                "📡 Слежу за 15\\+ источниками и присылаю важные новости "
-                "по российскому рынку прямо в личку\\.\n\n"
-                "Настроим бота под тебя — займёт 1 минуту\\."
+                f"{greeting} Я Бычок 🐂 — слежу за новостями российского рынка и присылаю важное прямо в личку\\.\n\n"
+                "Настроим под тебя — займёт 1 минуту\."
             )
             await send_dm(
                 user_id,
@@ -519,6 +564,13 @@ async def handle_update(db: DBConnection, update: dict) -> None:
         else:
             await send_dm(user_id, "⛔ Нет доступа\\.")
 
+
+    elif cmd == "/stats":
+        if user_id in ADMIN_USER_IDS:
+            period = text.split()[1] if len(text.split()) > 1 else "day"
+            await _handle_stats(db, user_id, period)
+        else:
+            await send_dm(user_id, "\u26d4 \u041d\u0435\u0442 \u0434\u043e\u0441\u0442\u0443\u043f\u0430\\.")  # ⛔ Нет доступа.
     elif cmd == "/calendar":
         await _handle_calendar(db, user_id)
 
@@ -550,6 +602,11 @@ async def handle_update(db: DBConnection, update: dict) -> None:
             user_id,
             "Команды: */portfolio*, */calendar*, */settings*, */help*\\.",
         )
+
+    try:
+        queries.log_bot_command(db, user_id, cmd)
+    except Exception:
+        pass
 
     logger.info(
         "bot command handled",
