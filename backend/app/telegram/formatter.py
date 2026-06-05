@@ -65,8 +65,8 @@ def format_message(
         if ai_analysis.watch_for:
             parts += ["", f"Следим за: _{_esc(ai_analysis.watch_for)}_"]
     else:
-        emoji = "🔄" if is_update else "📰"
-        parts = [f"{emoji} *{_esc(cluster['canonical_title'])}*"]
+        emoji = "🔄" if is_update else ""
+        parts = [f"{(emoji + ' ') if emoji else ''}*{_esc(cluster['canonical_title'])}*"]
 
     if ticker_line:
         parts += ["", ticker_line]

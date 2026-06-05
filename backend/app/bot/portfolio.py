@@ -6,6 +6,7 @@ Opens its own DB connection so it can safely run after the poll cycle closes the
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -34,11 +35,11 @@ async def notify(tickers_raw: str, canonical_title: str, cluster_id: int, score:
 
     db = get_db()
     try:
-        user_ids = queries.get_subscribed_users(db, tickers)
+        users = queries.get_subscribed_users_with_settings(db, tickers)
     finally:
         db.close()
 
-    if not user_ids:
+    if not users:
         metrics.inc(metrics.PORTFOLIO_NO_SUBS)
         logger.debug(
             "portfolio notify: 0 subscribers for tickers=%s cluster_id=%d",
@@ -50,8 +51,16 @@ async def notify(tickers_raw: str, canonical_title: str, cluster_id: int, score:
     tickers_line = " · ".join(f"\\${t}" for t in tickers)
     title = _esc(canonical_title)
     text = f"*{title}*\n\n{tickers_line}"
+    now_hour = datetime.now(timezone.utc).hour
 
-    for user_id in user_ids:
+    for user in users:
+        user_id = user["user_id"]
+        if queries.is_quiet_hour(user["quiet_from"], user["quiet_to"], now_hour):
+            logger.debug(
+                "portfolio notify: quiet hours, skipping DM to user_id=%d", user_id,
+                extra={"event": "portfolio_quiet_skip", "user_id": user_id, "cluster_id": cluster_id},
+            )
+            continue
         msg_id = await send_dm(user_id, text)
         ok = msg_id is not None
         if ok:
@@ -87,11 +96,11 @@ async def notify_with_ai(
 
     db = get_db()
     try:
-        user_ids = queries.get_subscribed_users(db, tickers)
+        users = queries.get_subscribed_users_with_settings(db, tickers)
     finally:
         db.close()
 
-    if not user_ids:
+    if not users:
         metrics.inc(metrics.PORTFOLIO_NO_SUBS)
         return
 
@@ -103,8 +112,16 @@ async def notify_with_ai(
         dm_tickers = ai_analysis.tickers if ai_analysis.tickers else tickers
 
     text = format_ticker_dm(canonical_title, dm_tickers, ai_analysis)
+    now_hour = datetime.now(timezone.utc).hour
 
-    for user_id in user_ids:
+    for user in users:
+        user_id = user["user_id"]
+        if queries.is_quiet_hour(user["quiet_from"], user["quiet_to"], now_hour):
+            logger.debug(
+                "portfolio notify_with_ai: quiet hours, skipping DM to user_id=%d", user_id,
+                extra={"event": "portfolio_quiet_skip", "user_id": user_id, "cluster_id": cluster_id},
+            )
+            continue
         msg_id = await send_dm(user_id, text)
         ok = msg_id is not None
         metrics.inc(metrics.PORTFOLIO_DM_SENT if ok else metrics.PORTFOLIO_DM_FAILED)

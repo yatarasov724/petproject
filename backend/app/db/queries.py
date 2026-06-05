@@ -716,6 +716,40 @@ def get_subscribed_users(db: DBConnection, tickers: list[str]) -> list[int]:
     return [r["user_id"] for r in rows]
 
 
+def get_subscribed_users_with_settings(
+    db: DBConnection, tickers: list[str]
+) -> list[dict]:
+    """Return subscribed users with quiet-hours settings.
+
+    Each dict has: user_id (Telegram ID), quiet_from, quiet_to.
+    user_id in portfolio_subscriptions stores the Telegram ID directly.
+    """
+    if not tickers:
+        return []
+    placeholders = ",".join(["%s"] * len(tickers))
+    rows = db.execute(
+        f"""
+        SELECT DISTINCT ON (ps.user_id)
+               ps.user_id,
+               us.quiet_from,
+               us.quiet_to
+        FROM   portfolio_subscriptions ps
+        LEFT JOIN users u ON u.telegram_id = ps.user_id
+        LEFT JOIN user_settings us ON us.user_id = u.id
+        WHERE  ps.ticker IN ({placeholders})
+        """,
+        tickers,
+    ).fetchall()
+    return [
+        {
+            "user_id":    r["user_id"],
+            "quiet_from": r["quiet_from"],
+            "quiet_to":   r["quiet_to"],
+        }
+        for r in rows
+    ]
+
+
 _MONTHS_SHORT = (
     "", "янв", "фев", "мар", "апр", "май", "июн",
     "июл", "авг", "сен", "окт", "ноя", "дек",

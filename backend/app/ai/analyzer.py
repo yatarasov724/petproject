@@ -9,6 +9,7 @@ Returns None on any failure so the pipeline always continues with static formatt
 """
 
 import json
+from datetime import date
 import logging
 from dataclasses import dataclass
 from typing import Optional
@@ -87,7 +88,7 @@ RUAL (Русал, алюминий), RASP (Распадская, уголь)
 
 Электроэнергетика:
 IRAO (Интер РАО), HYDR (РусГидро), FEES (ФСК ЕЭС, Россети — только головная компания!),
-MSRS (Россети Московский регион), MRKV (Россети Волга),
+MSNG (Мосэнерго — НЕ путать с MSRS!), MSRS (Россети Московский регион), MRKV (Россети Волга),
 MRKU (Россети Урал), MRKP (Россети Центр и Приволжье), MRKC (Россети Центр)
 
 IT и телеком:
@@ -98,9 +99,12 @@ HHRU (Хедхантер, HeadHunter), OZON (Ozon-маркетплейс), DIAS 
 Транспорт:
 FLOT (Совкомфлот, танкеры), AFLT (Аэрофлот)
 
+Удобрения и химия:
+AKRN (Акрон), PHOR (ФосАгро)
+
 Ритейл, агро, прочее:
 MGNT (Магнит), FIVE (X5, Пятёрочка, Перекрёсток), FIXP (Fix Price),
-PHOR (ФосАгро), AGRO (РусАгро), MOEX (Мосбиржа, Московская биржа),
+AGRO (РусАгро), MOEX (Мосбиржа, Московская биржа),
 SGZH (Сегежа), MGKL (МГКЛ, Мосгорломбард), OZPH (Озон Фармацевтика)
 
 Недвижимость:
@@ -113,6 +117,8 @@ SMLT (Самолёт), PIKK (ПИК), LSRG (ЛСР), ETLN (Эталон)
 - ОБЯЗАТЕЛЬНО: цена газа / газовый рынок (без конкретной компании) → ["GAZP", "NVTK"]
 - ОБЯЗАТЕЛЬНО: золото / цена золота (без компании) → ["PLZL"]
 - Макроэкономика, ЦБ, санкции без конкретной компании → пустой массив []
+- IPO-активность без конкретной компании → []
+- Политика, военные новости, СВО, геополитика без упоминания компании → []
 - Максимум 3 тикера
 
 КРИТИЧЕСКИ ВАЖНО — ЗАПРЕЩЁННЫЕ ОШИБКИ:
@@ -125,6 +131,8 @@ SMLT (Самолёт), PIKK (ПИК), LSRG (ЛСР), ETLN (Эталон)
 ❌ «Озоновый слой», «слой озона», «озоновая дыра» — природное явление, НЕ компания → []
 ❌ НМТП → НЕ VTBR. НМТП = NMTP
 ❌ Русснефть → НЕ LKOH, НЕ ROSN. Русснефть = RNFT
+❌ Мосэнерго → НЕ MSRS. Мосэнерго = MSNG
+❌ IPO/SPO без конкретной компании → НЕ SBER, НЕ MOEX. Верни []
 ❌ Если компания есть в новости, но её тикера НЕТ в списке выше → обязательно []
 ❌ Не угадывай тикер похожей компании — лучше вернуть [], чем ошибиться
 
@@ -152,10 +160,11 @@ _VALID_TICKERS = frozenset({
     "RNFT", "NMTP",
     "SBER", "VTBR", "TCSG", "CBOM", "BSPB", "AFKS", "SVCB", "SPBE", "RENI", "MTSB",
     "GMKN", "CHMF", "NLMK", "MAGN", "PLZL", "ALRS", "POLY", "MTLR", "SELG", "RUAL", "RASP",
-    "IRAO", "HYDR", "FEES", "MSRS", "MRKV", "MRKU", "MRKP", "MRKC",
+    "IRAO", "HYDR", "FEES", "MSNG", "MSRS", "MRKV", "MRKU", "MRKP", "MRKC",
     "YNDX", "MTSS", "RTKM", "VKCO", "POSI", "HHRU", "OZON", "DIAS",
     "FLOT", "AFLT",
-    "MGNT", "FIVE", "FIXP", "PHOR", "AGRO", "MOEX", "SGZH", "MGKL", "OZPH",
+    "AKRN", "PHOR",
+    "MGNT", "FIVE", "FIXP", "AGRO", "MOEX", "SGZH", "MGKL", "OZPH",
     "SMLT", "PIKK", "LSRG", "ETLN",
 })
 
@@ -177,7 +186,8 @@ async def analyze(title: str, text: str = "", recent_context: list[str] = []) ->
     if not settings.openrouter_api_key:
         return None
 
-    user_content = _USER_TEMPLATE.format(title=title, text=text or title)
+    today = date.today().strftime("%d.%m.%Y")
+    user_content = "Сегодня " + today + ".\n\n" + _USER_TEMPLATE.format(title=title, text=text or title)
     if recent_context:
         events_block = "\n".join(f"• {t}" for t in recent_context[:5])
         user_content += f"\n\nПоследние события по этим тикерам:\n{events_block}"
