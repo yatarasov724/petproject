@@ -474,6 +474,14 @@ async def _ai_enrich(
 
         ai_analysis = await analyzer.analyze(title, content, recent_context=recent_context)
         if ai_analysis is None:
+            # AI failed — delete the raw message so unedited posts don't appear in the channel.
+            from app.telegram import client as _tg
+            await _tg.delete_message(message_id)
+            logger.warning(
+                "AI enrich failed, deleting raw message: cluster_id=%d message_id=%d",
+                cluster["id"], message_id,
+                extra={"event": "ai_enrich_deleted", "cluster_id": cluster["id"]},
+            )
             return
 
         # Edit the channel message with AI-enriched content.
@@ -488,6 +496,7 @@ async def _ai_enrich(
                 tickers_raw, ai_analysis, cluster["id"], canonical_title,
                 correlations=correlations,
                 event_type=score_result.event_type.value,
+                score=score_result.score,
             )
 
         logger.info(

@@ -35,9 +35,11 @@ logger = logging.getLogger(__name__)
 
 _BASE_URL          = "https://api.telegram.org/bot{token}/sendMessage"
 _EDIT_URL          = "https://api.telegram.org/bot{token}/editMessageText"
+_DELETE_URL        = "https://api.telegram.org/bot{token}/deleteMessage"
 _UPDATES_URL       = "https://api.telegram.org/bot{token}/getUpdates"
 _ANSWER_CBQ_URL    = "https://api.telegram.org/bot{token}/answerCallbackQuery"
 _TIMEOUT           = aiohttp.ClientTimeout(total=10)
+_LONG_POLL_TIMEOUT = aiohttp.ClientTimeout(total=8)   # for long polling (> poll timeout)
 _MAX_RETRIES       = 3
 _RETRY_BASE_S      = 2    # backoff: 2s → 4s → 8s
 _MAX_RETRY_AFTER_S = 30   # cap Retry-After sleep
@@ -51,7 +53,7 @@ _update_offset: int = 0
 
 async def get_updates() -> list[dict]:
     """
-    Fetch pending bot updates via getUpdates (timeout=0, non-blocking).
+    Fetch pending bot updates via getUpdates (long polling, timeout=3s).
     Advances the offset so each update is delivered exactly once per process.
     Returns an empty list on any error or in DRY_RUN mode.
     """
@@ -62,11 +64,11 @@ async def get_updates() -> list[dict]:
     url = _UPDATES_URL.format(token=settings.telegram_bot_token)
     params = {
         "offset":          _update_offset,
-        "timeout":         0,
+        "timeout":         3,   # long polling: Telegram responds immediately when update arrives
         "allowed_updates": '["message","callback_query"]',
     }
     try:
-        async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+        async with aiohttp.ClientSession(timeout=_LONG_POLL_TIMEOUT) as session:
             async with session.get(url, params=params) as resp:
                 if resp.status != 200:
                     return []
@@ -208,6 +210,35 @@ async def edit_message(message_id: int, text: str) -> bool:
                 return bool(ok)
     except Exception as exc:
         logger.warning("editMessageText error message_id=%d: %s", message_id, exc)
+        return False
+
+
+async def delete_message(message_id: int) -> bool:
+    """
+    Delete a message from the channel.
+    Used to remove raw (non-AI-enriched) messages when AI enrichment fails.
+    """
+    if settings.dry_run or message_id <= 0:
+        return True
+
+    url = _DELETE_URL.format(token=settings.telegram_bot_token)
+    payload = {
+        "chat_id":    settings.telegram_channel_id,
+        "message_id": message_id,
+    }
+    try:
+        async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+            async with session.post(url, json=payload) as resp:
+                body = await resp.json(content_type=None)
+                ok = resp.status == 200 and body.get("ok")
+                if not ok:
+                    logger.warning(
+                        "deleteMessage failed message_id=%d: %s",
+                        message_id, body.get("description", ""),
+                    )
+                return bool(ok)
+    except Exception as exc:
+        logger.warning("deleteMessage error message_id=%d: %s", message_id, exc)
         return False
 
 
