@@ -253,6 +253,22 @@ _QUIET_PRESETS: list[tuple[str, tuple[int, int] | None]] = [
     ("23–09", (23, 9)),
 ]
 
+# (utc_offset, short_label, city_hint)
+_TZ_OPTIONS: list[tuple[int, str, str]] = [
+    (0,  "UTC+0",  "Лондон"),
+    (2,  "UTC+2",  "Калининград"),
+    (3,  "UTC+3",  "Москва"),
+    (4,  "UTC+4",  "Самара"),
+    (5,  "UTC+5",  "Екатеринбург"),
+    (6,  "UTC+6",  "Омск"),
+    (7,  "UTC+7",  "Новосибирск"),
+    (8,  "UTC+8",  "Иркутск"),
+    (9,  "UTC+9",  "Якутск"),
+    (10, "UTC+10", "Владивосток"),
+    (11, "UTC+11", "Магадан"),
+    (12, "UTC+12", "Камчатка"),
+]
+
 # ── Reply keyboard (persistent bottom button) ─────────────────────────────────
 
 _REPLY_KEYBOARD: dict = {
@@ -304,14 +320,24 @@ async def _send_menu(user_id: int, is_admin: bool = False) -> None:
     )
 
 
+def _tz_label(utc_offset: int) -> str:
+    for offset, label, city in _TZ_OPTIONS:
+        if offset == utc_offset:
+            return f"{label} ({city})"
+    sign = "+" if utc_offset >= 0 else ""
+    return f"UTC{sign}{utc_offset}"
+
+
 def _settings_header(s: Any) -> str:
     score = s["min_score"]
     qf, qt = s["quiet_from"], s["quiet_to"]
+    tz = s.get("utc_offset", 3)
     quiet_str = f"{qf:02d}:00–{qt:02d}:00" if qf is not None and qt is not None else "выкл"
     return (
         "⚙️ *Настройки алертов*\n\n"
         f"Порог важности: *{score}*\n"
-        f"Тихие часы: *{quiet_str}*"
+        f"Тихие часы: *{quiet_str}*\n"
+        f"Часовой пояс: *{_md_escape(_tz_label(tz))}*"
     )
 
 
@@ -320,9 +346,25 @@ def _build_settings_keyboard() -> dict:
         "inline_keyboard": [
             [{"text": "📊 Порог важности  ▶", "callback_data": "cfg:score"}],
             [{"text": "🌙 Тихие часы  ▶",    "callback_data": "cfg:quiet"}],
+            [{"text": "🌍 Часовой пояс  ▶",  "callback_data": "cfg:tz"}],
             [{"text": "✔️ Готово",             "callback_data": "cfg:done"}],
         ]
     }
+
+
+def _build_tz_keyboard(current_offset: int) -> dict:
+    rows = []
+    row: list[dict] = []
+    for offset, label, _ in _TZ_OPTIONS:
+        btn_label = f"✅ {label}" if offset == current_offset else label
+        row.append({"text": btn_label, "callback_data": f"cfg:tz:{offset}"})
+        if len(row) == 4:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([{"text": "← Назад", "callback_data": "cfg:main"}])
+    return {"inline_keyboard": rows}
 
 
 def _build_score_keyboard(current: int) -> dict:
@@ -392,8 +434,30 @@ def _build_onb_score_keyboard() -> dict:
 
 def _onb_step4_text() -> str:
     return (
-        "🌙 *Шаг 3 из 3 — Тихие часы*\n\n"
-        "Алерты ночью? В тихие часы уведомления не придут \\(время UTC\\)\\."
+        "🌍 *Шаг 3 из 4 — Часовой пояс*\n\n"
+        "Выбери свой часовой пояс — тихие часы будут работать по местному времени\\."
+    )
+
+
+def _build_onb_tz_keyboard(current_offset: int = 3) -> dict:
+    rows = []
+    row: list[dict] = []
+    for offset, label, _ in _TZ_OPTIONS:
+        btn_label = f"✅ {label}" if offset == current_offset else label
+        row.append({"text": btn_label, "callback_data": f"onb:tz:{offset}"})
+        if len(row) == 4:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([{"text": "Пропустить →", "callback_data": "onb:skip:tz"}])
+    return {"inline_keyboard": rows}
+
+
+def _onb_step5_text_quiet() -> str:
+    return (
+        "🌙 *Шаг 4 из 4 — Тихие часы*\n\n"
+        "Алерты ночью? В тихие часы уведомления не придут\\."
     )
 
 
@@ -411,16 +475,18 @@ def _build_onb_quiet_keyboard() -> dict:
     }
 
 
-def _onb_step5_text(n_tickers: int, score: int, quiet_from: int | None, quiet_to: int | None) -> str:
+def _onb_step6_text(n_tickers: int, score: int, quiet_from: int | None, quiet_to: int | None, utc_offset: int) -> str:
     n_str     = _md_escape(str(n_tickers))
     score_str = _md_escape(str(score))
     if quiet_from is not None and quiet_to is not None:
-        quiet_str = _md_escape(f"{quiet_from:02d}:00–{quiet_to:02d}:00 UTC")
+        quiet_str = _md_escape(f"{quiet_from:02d}:00–{quiet_to:02d}:00")
     else:
         quiet_str = "выкл"
+    tz_str = _md_escape(_tz_label(utc_offset))
     return (
         "🎉 *Всё готово\\!*\n\n"
-        f"Подписан на *{n_str}* тикеров · Порог: *{score_str}* · Тихие часы: *{quiet_str}*\n\n"
+        f"Подписан на *{n_str}* тикеров · Порог: *{score_str}* · "
+        f"Тихие часы: *{quiet_str}* \\({tz_str}\\)\n\n"
         "Теперь я буду присылать важные новости по твоим акциям\\.\n"
         "Управляй ботом через команду /menu или кнопки ниже\\."
     )
@@ -429,6 +495,11 @@ def _onb_step5_text(n_tickers: int, score: int, quiet_from: int | None, quiet_to
 _ONB_QUIET_CALLBACKS: frozenset[str] = frozenset({
     "onb:skip:quiet", "onb:quiet:off",
     "onb:quiet:22:8", "onb:quiet:23:8", "onb:quiet:23:9",
+})
+
+_ONB_TZ_CALLBACKS: frozenset[str] = frozenset({
+    "onb:skip:tz",
+    *[f"onb:tz:{offset}" for offset, _, _ in _TZ_OPTIONS],
 })
 
 
@@ -646,14 +717,14 @@ async def _handle_callback(db: DBConnection, cbq: dict) -> None:
         await send_dm(user_id, _onb_step3_text(), reply_markup=_build_onb_score_keyboard())
         return
 
-    # onb:score:{v} or onb:skip:score — save score (or keep default), show step 4
+    # onb:score:{v} or onb:skip:score — save score (or keep default), show tz step
     if data.startswith("onb:score:") or data == "onb:skip:score":
         await answer_callback_query(cbq_id)
         await edit_dm(chat_id, msg_id, _onb_step3_text().split("\n")[0],
                       reply_markup={"inline_keyboard": []})
+        internal_id = _get_internal_user_id(db, user_id)
         if data.startswith("onb:score:"):
             score = int(data.split(":")[2])
-            internal_id = _get_internal_user_id(db, user_id)
             if internal_id:
                 s = queries.get_user_settings(db, internal_id)
                 queries.save_user_settings(
@@ -661,14 +732,35 @@ async def _handle_callback(db: DBConnection, cbq: dict) -> None:
                     min_score=score,
                     quiet_from=s["quiet_from"],
                     quiet_to=s["quiet_to"],
+                    utc_offset=s.get("utc_offset", 3),
                 )
-        await send_dm(user_id, _onb_step4_text(), reply_markup=_build_onb_quiet_keyboard())
+        s = queries.get_user_settings(db, internal_id) if internal_id else queries.DEFAULT_SETTINGS
+        await send_dm(user_id, _onb_step4_text(), reply_markup=_build_onb_tz_keyboard(s.get("utc_offset", 3)))
         return
 
-    # onb:quiet:* or onb:skip:quiet — save quiet hours (if any), show step 5
-    if data in _ONB_QUIET_CALLBACKS:
+    # onb:tz:{offset} or onb:skip:tz — save timezone, show quiet hours step
+    if data in _ONB_TZ_CALLBACKS:
         await answer_callback_query(cbq_id)
         await edit_dm(chat_id, msg_id, _onb_step4_text().split("\n")[0],
+                      reply_markup={"inline_keyboard": []})
+        internal_id = _get_internal_user_id(db, user_id)
+        if internal_id and data.startswith("onb:tz:"):
+            tz = int(data.split(":")[2])
+            s = queries.get_user_settings(db, internal_id)
+            queries.save_user_settings(
+                db, internal_id,
+                min_score=s["min_score"],
+                quiet_from=s["quiet_from"],
+                quiet_to=s["quiet_to"],
+                utc_offset=tz,
+            )
+        await send_dm(user_id, _onb_step5_text_quiet(), reply_markup=_build_onb_quiet_keyboard())
+        return
+
+    # onb:quiet:* or onb:skip:quiet — save quiet hours (if any), show final step
+    if data in _ONB_QUIET_CALLBACKS:
+        await answer_callback_query(cbq_id)
+        await edit_dm(chat_id, msg_id, _onb_step5_text_quiet().split("\n")[0],
                       reply_markup={"inline_keyboard": []})
         internal_id = _get_internal_user_id(db, user_id)
         if internal_id and data.startswith("onb:quiet:") and data != "onb:quiet:off":
@@ -680,12 +772,13 @@ async def _handle_callback(db: DBConnection, cbq: dict) -> None:
                 min_score=s["min_score"],
                 quiet_from=qf,
                 quiet_to=qt,
+                utc_offset=s.get("utc_offset", 3),
             )
         tickers = queries.get_user_tickers(db, user_id)
         s = queries.get_user_settings(db, internal_id) if internal_id else queries.DEFAULT_SETTINGS
         await send_dm(
             user_id,
-            _onb_step5_text(len(tickers), s["min_score"], s["quiet_from"], s["quiet_to"]),
+            _onb_step6_text(len(tickers), s["min_score"], s["quiet_from"], s["quiet_to"], s.get("utc_offset", 3)),
             reply_markup=_REPLY_KEYBOARD,
         )
         return
@@ -856,6 +949,7 @@ async def _handle_settings_callback(
                 min_score=value,
                 quiet_from=s["quiet_from"],
                 quiet_to=s["quiet_to"],
+                utc_offset=s.get("utc_offset", 3),
             )
         s = _s()
         await edit_dm(chat_id, msg_id, _settings_header(s), reply_markup=_build_settings_keyboard())
@@ -866,7 +960,7 @@ async def _handle_settings_callback(
     if data == "cfg:quiet":
         await answer_callback_query(cbq_id)
         s = _s()
-        text = "🌙 *Тихие часы* \\(UTC\\)\n\nАлерты не будут приходить в выбранное время\\."
+        text = "🌙 *Тихие часы*\n\nАлерты не будут приходить в выбранное время \\(по вашему часовому поясу\\)\\."
         await edit_dm(chat_id, msg_id, text, reply_markup=_build_quiet_keyboard(s["quiet_from"], s["quiet_to"]))
         return
 
@@ -875,7 +969,7 @@ async def _handle_settings_callback(
         await answer_callback_query(cbq_id)
         if internal_id:
             s = _s()
-            queries.save_user_settings(db, internal_id, min_score=s["min_score"], quiet_from=None, quiet_to=None)
+            queries.save_user_settings(db, internal_id, min_score=s["min_score"], quiet_from=None, quiet_to=None, utc_offset=s.get("utc_offset", 3))
         s = _s()
         await edit_dm(chat_id, msg_id, _settings_header(s), reply_markup=_build_settings_keyboard())
         logger.info("settings quiet disabled", extra={"event": "settings_quiet_off", "user_id": user_id})
@@ -888,10 +982,30 @@ async def _handle_settings_callback(
         qf, qt = int(parts[2]), int(parts[3])
         if internal_id:
             s = _s()
-            queries.save_user_settings(db, internal_id, min_score=s["min_score"], quiet_from=qf, quiet_to=qt)
+            queries.save_user_settings(db, internal_id, min_score=s["min_score"], quiet_from=qf, quiet_to=qt, utc_offset=s.get("utc_offset", 3))
         s = _s()
         await edit_dm(chat_id, msg_id, _settings_header(s), reply_markup=_build_settings_keyboard())
         logger.info(
             "settings quiet set", extra={"event": "settings_quiet", "user_id": user_id, "from": qf, "to": qt}
         )
+        return
+
+    # cfg:tz — show timezone picker
+    if data == "cfg:tz":
+        await answer_callback_query(cbq_id)
+        s = _s()
+        text = "🌍 *Часовой пояс*\n\nВыбери свой часовой пояс\\. Тихие часы будут работать по местному времени\\."
+        await edit_dm(chat_id, msg_id, text, reply_markup=_build_tz_keyboard(s.get("utc_offset", 3)))
+        return
+
+    # cfg:tz:{offset} — save timezone, back to main settings
+    if data.startswith("cfg:tz:"):
+        await answer_callback_query(cbq_id)
+        tz = int(data.split(":")[2])
+        if internal_id:
+            s = _s()
+            queries.save_user_settings(db, internal_id, min_score=s["min_score"], quiet_from=s["quiet_from"], quiet_to=s["quiet_to"], utc_offset=tz)
+        s = _s()
+        await edit_dm(chat_id, msg_id, _settings_header(s), reply_markup=_build_settings_keyboard())
+        logger.info("settings tz set", extra={"event": "settings_tz", "user_id": user_id, "utc_offset": tz})
         return

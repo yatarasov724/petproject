@@ -55,7 +55,7 @@ async def notify(tickers_raw: str, canonical_title: str, cluster_id: int, score:
 
     for user in users:
         user_id = user["user_id"]
-        if queries.is_quiet_hour(user["quiet_from"], user["quiet_to"], now_hour):
+        if queries.is_quiet_hour(user["quiet_from"], user["quiet_to"], now_hour, user["utc_offset"]):
             logger.debug(
                 "portfolio notify: quiet hours, skipping DM to user_id=%d", user_id,
                 extra={"event": "portfolio_quiet_skip", "user_id": user_id, "cluster_id": cluster_id},
@@ -116,7 +116,7 @@ async def notify_with_ai(
 
     for user in users:
         user_id = user["user_id"]
-        if queries.is_quiet_hour(user["quiet_from"], user["quiet_to"], now_hour):
+        if queries.is_quiet_hour(user["quiet_from"], user["quiet_to"], now_hour, user["utc_offset"]):
             logger.debug(
                 "portfolio notify_with_ai: quiet hours, skipping DM to user_id=%d", user_id,
                 extra={"event": "portfolio_quiet_skip", "user_id": user_id, "cluster_id": cluster_id},

@@ -732,7 +732,8 @@ def get_subscribed_users_with_settings(
         SELECT DISTINCT ON (ps.user_id)
                ps.user_id,
                us.quiet_from,
-               us.quiet_to
+               us.quiet_to,
+               COALESCE(us.utc_offset, 3) AS utc_offset
         FROM   portfolio_subscriptions ps
         LEFT JOIN users u ON u.telegram_id = ps.user_id
         LEFT JOIN user_settings us ON us.user_id = u.id
@@ -745,6 +746,7 @@ def get_subscribed_users_with_settings(
             "user_id":    r["user_id"],
             "quiet_from": r["quiet_from"],
             "quiet_to":   r["quiet_to"],
+            "utc_offset": r["utc_offset"],
         }
         for r in rows
     ]
@@ -1038,7 +1040,7 @@ def get_price_correlations(
 
 # ── user_settings ─────────────────────────────────────────────────────────────
 
-DEFAULT_SETTINGS: dict = {"min_score": 30, "quiet_from": None, "quiet_to": None}
+DEFAULT_SETTINGS: dict = {"min_score": 30, "quiet_from": None, "quiet_to": None, "utc_offset": 3}
 
 
 def get_user_settings(db: DBConnection, user_id: int) -> Any:
@@ -1071,33 +1073,43 @@ def save_user_settings(
     min_score: int = 30,
     quiet_from: Optional[int] = None,
     quiet_to: Optional[int] = None,
+    utc_offset: int = 3,
 ) -> None:
     """Upsert all settings fields for the user."""
     db.execute(
         """
-        INSERT INTO user_settings (user_id, min_score, quiet_from, quiet_to, updated_at)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO user_settings (user_id, min_score, quiet_from, quiet_to, utc_offset, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s)
         ON CONFLICT (user_id) DO UPDATE
             SET min_score  = EXCLUDED.min_score,
                 quiet_from = EXCLUDED.quiet_from,
                 quiet_to   = EXCLUDED.quiet_to,
+                utc_offset = EXCLUDED.utc_offset,
                 updated_at = EXCLUDED.updated_at
         """,
-        (user_id, min_score, quiet_from, quiet_to, _utcnow_iso()),
+        (user_id, min_score, quiet_from, quiet_to, utc_offset, _utcnow_iso()),
     )
     db.commit()
 
 
-def is_quiet_hour(quiet_from: Optional[int], quiet_to: Optional[int], hour: int) -> bool:
-    """Return True if the given UTC hour falls within the configured quiet window.
+def is_quiet_hour(
+    quiet_from: Optional[int],
+    quiet_to: Optional[int],
+    utc_hour: int,
+    utc_offset: int = 3,
+) -> bool:
+    """Return True if the current local hour falls within the quiet window.
 
-    Handles midnight-crossing ranges: quiet_from=23, quiet_to=8 means 23:xx–07:xx.
+    quiet_from/quiet_to are stored as local time hours.
+    utc_offset converts the server UTC hour to the user's local hour.
+    Handles midnight-crossing ranges: quiet_from=23, quiet_to=8 → 23:xx–07:xx local.
     """
     if quiet_from is None or quiet_to is None:
         return False
+    local_hour = (utc_hour + utc_offset) % 24
     if quiet_from < quiet_to:
-        return quiet_from <= hour < quiet_to
-    return hour >= quiet_from or hour < quiet_to
+        return quiet_from <= local_hour < quiet_to
+    return local_hour >= quiet_from or local_hour < quiet_to
 
 
 # ── subscriptions ─────────────────────────────────────────────────────────────
