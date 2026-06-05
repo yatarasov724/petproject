@@ -25,9 +25,14 @@ def _insert_cluster(
     source_count: int = 2,
     status: str = "published",
     sent_minutes_ago: int = 60,
+    first_seen_minutes_ago: int | None = None,
 ) -> int:
-    """Insert a cluster with last_sent_at set to `sent_minutes_ago` minutes ago."""
+    """Insert a cluster with last_sent_at and first_seen_at set relative to now."""
     sent_at = (datetime.now(timezone.utc) - timedelta(minutes=sent_minutes_ago)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    seen_ago = first_seen_minutes_ago if first_seen_minutes_ago is not None else sent_minutes_ago
+    first_seen_at = (datetime.now(timezone.utc) - timedelta(minutes=seen_ago)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
     tokens = title.lower().replace(" ", "_")
@@ -35,11 +40,11 @@ def _insert_cluster(
         """
         INSERT INTO event_clusters
             (canonical_title, title_tokens, keywords, best_score, source_count,
-             status, last_sent_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+             status, last_sent_at, first_seen_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
         """,
-        (title, tokens, tokens, score, source_count, status, sent_at),
+        (title, tokens, tokens, score, source_count, status, sent_at, first_seen_at),
     )
     cluster_id = cur.fetchone()["id"]
     db.commit()
@@ -53,16 +58,16 @@ class TestGetTopSentClusters:
         _insert_cluster(db, title="ЦБ сохранил ставку", sent_minutes_ago=30)
         _insert_cluster(db, title="Газпром снизил дивиденды", sent_minutes_ago=120)
 
-        result = queries.get_top_sent_clusters(db, within_hours=3, limit=10)
+        result = queries.get_top_sent_clusters(db, since_dt=datetime.now(timezone.utc) - timedelta(hours=3), limit=10)
         titles = [r["canonical_title"] for r in result]
         assert "ЦБ сохранил ставку" in titles
         assert "Газпром снизил дивиденды" in titles
 
     def test_excludes_clusters_outside_window(self, db):
-        _insert_cluster(db, title="Старое событие", sent_minutes_ago=25 * 60)  # 25h ago
+        _insert_cluster(db, title="Старое событие", sent_minutes_ago=25 * 60, first_seen_minutes_ago=25 * 60)  # 25h ago
         _insert_cluster(db, title="Свежее событие", sent_minutes_ago=30)
 
-        result = queries.get_top_sent_clusters(db, within_hours=12, limit=10)
+        result = queries.get_top_sent_clusters(db, since_dt=datetime.now(timezone.utc) - timedelta(hours=12), limit=10)
         titles = [r["canonical_title"] for r in result]
         assert "Свежее событие" in titles
         assert "Старое событие" not in titles
@@ -79,7 +84,7 @@ class TestGetTopSentClusters:
         db.commit()
         _insert_cluster(db, title="Опубликованное событие", sent_minutes_ago=30)
 
-        result = queries.get_top_sent_clusters(db, within_hours=12, limit=10)
+        result = queries.get_top_sent_clusters(db, since_dt=datetime.now(timezone.utc) - timedelta(hours=12), limit=10)
         titles = [r["canonical_title"] for r in result]
         assert "Опубликованное событие" in titles
         assert "Неопубликованное событие" not in titles
@@ -89,7 +94,7 @@ class TestGetTopSentClusters:
         _insert_cluster(db, title="Важное событие",     score=50, source_count=4, sent_minutes_ago=30)
         _insert_cluster(db, title="Менее важное событие", score=50, source_count=1, sent_minutes_ago=30)
 
-        result = queries.get_top_sent_clusters(db, within_hours=12, limit=10)
+        result = queries.get_top_sent_clusters(db, since_dt=datetime.now(timezone.utc) - timedelta(hours=12), limit=10)
         titles = [r["canonical_title"] for r in result]
         # score * source_count: 200 > 50 > 60
         assert titles[0] == "Важное событие"
@@ -98,11 +103,11 @@ class TestGetTopSentClusters:
         for i in range(15):
             _insert_cluster(db, title=f"Событие {i}", sent_minutes_ago=30)
 
-        result = queries.get_top_sent_clusters(db, within_hours=24, limit=10)
+        result = queries.get_top_sent_clusters(db, since_dt=datetime.now(timezone.utc) - timedelta(hours=24), limit=10)
         assert len(result) == 10
 
     def test_empty_when_no_sent_clusters(self, db):
-        result = queries.get_top_sent_clusters(db, within_hours=12, limit=7)
+        result = queries.get_top_sent_clusters(db, since_dt=datetime.now(timezone.utc) - timedelta(hours=12), limit=7)
         assert result == []
 
 

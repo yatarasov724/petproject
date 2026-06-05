@@ -175,7 +175,7 @@ class AIAnalysis:
     what_behind: str
     watch_for:   str
     tickers:     list[str]
-    sentiment:   Optional[str]  # "positive" | "negative" | None
+    sentiment:   Optional[str] = None  # "positive" | "negative" | None
 
 
 async def analyze(title: str, text: str = "", recent_context: list[str] = []) -> Optional[AIAnalysis]:

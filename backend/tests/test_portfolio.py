@@ -228,10 +228,9 @@ async def test_notify_with_ai_sends_dm(db):
 
     assert len(sent_texts) == 1
     msg = sent_texts[0]
-    assert "📊" in msg
+    assert "Контекст:" in msg
     assert "SBER" in msg
-    assert "🔍" in msg
-    assert "👀" in msg
+    assert "Следим за:" in msg
 
 
 @pytest.mark.asyncio

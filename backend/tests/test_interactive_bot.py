@@ -285,8 +285,8 @@ async def test_onb_2_sends_score_keyboard(db):
 
 
 @pytest.mark.asyncio
-async def test_onb_score_saves_and_sends_quiet_keyboard(db):
-    """`onb:score:50` saves the score and shows step 4 (quiet hours)."""
+async def test_onb_score_saves_and_sends_tz_keyboard(db):
+    """`onb:score:50` saves the score and shows step 3 (timezone selection)."""
     from app.db import queries
     queries.upsert_user(db, 111, None, "Test")
 
@@ -311,8 +311,9 @@ async def test_onb_score_saves_and_sends_quiet_keyboard(db):
         for row in msg["reply_markup"]["inline_keyboard"]
         for btn in row
     ]
-    assert "onb:quiet:off" in all_data
-    assert "onb:skip:quiet" in all_data
+    # After score, onboarding now shows timezone step
+    assert any(d.startswith("onb:tz:") for d in all_data)
+    assert "onb:skip:tz" in all_data
 
     # Score saved in DB
     user_row = queries.get_user(db, 111)

@@ -181,6 +181,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
         CHECK (min_score BETWEEN 0 AND 100),
     quiet_from   INTEGER CHECK (quiet_from IS NULL OR quiet_from BETWEEN 0 AND 23),
     quiet_to     INTEGER CHECK (quiet_to   IS NULL OR quiet_to   BETWEEN 0 AND 23),
+    utc_offset   INTEGER NOT NULL DEFAULT 3,
     updated_at   TEXT    NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
     calendar_notify_days_before INTEGER NOT NULL DEFAULT 3
         CHECK (calendar_notify_days_before BETWEEN 1 AND 30)
@@ -244,3 +245,13 @@ CREATE TABLE IF NOT EXISTS price_snapshots (
 CREATE INDEX IF NOT EXISTS idx_price_snap_cluster  ON price_snapshots(cluster_id);
 CREATE INDEX IF NOT EXISTS idx_price_snap_evt_tick ON price_snapshots(event_type, ticker);
 CREATE INDEX IF NOT EXISTS idx_price_snap_pub_at   ON price_snapshots(published_at);
+
+-- ─── bot_command_log ──────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS bot_command_log (
+    id          SERIAL      PRIMARY KEY,
+    telegram_id INTEGER     NOT NULL,
+    command     TEXT        NOT NULL,
+    ts          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_bot_command_log_ts ON bot_command_log(ts);

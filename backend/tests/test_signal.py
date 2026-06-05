@@ -21,9 +21,8 @@ def _ai(
 def test_format_ticker_dm_structure():
     from app.telegram.formatter import format_ticker_dm
     text = format_ticker_dm("ЦБ повысил ставку", ["SBER"], _ai())
-    assert "📊" in text
-    assert "🔍" in text
-    assert "👀" in text
+    assert "Контекст:" in text
+    assert "Следим за:" in text
     assert "SBER" in text
 
 
@@ -72,4 +71,4 @@ def test_format_ticker_dm_skips_empty_watch_for():
     from app.telegram.formatter import format_ticker_dm
     ai = AIAnalysis(summary="Суть", what_behind="Контекст", watch_for="", tickers=["SBER"])
     text = format_ticker_dm("заголовок", ["SBER"], ai)
-    assert "👀" not in text
+    assert "Следим за:" not in text

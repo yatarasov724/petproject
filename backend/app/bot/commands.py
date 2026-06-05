@@ -355,8 +355,8 @@ def _build_settings_keyboard() -> dict:
 def _build_tz_keyboard(current_offset: int) -> dict:
     rows = []
     row: list[dict] = []
-    for offset, label, _ in _TZ_OPTIONS:
-        btn_label = f"✅ {label}" if offset == current_offset else label
+    for offset, label, city in _TZ_OPTIONS:
+        btn_label = f"✅ {city}" if offset == current_offset else city
         row.append({"text": btn_label, "callback_data": f"cfg:tz:{offset}"})
         if len(row) == 4:
             rows.append(row)
@@ -442,8 +442,8 @@ def _onb_step4_text() -> str:
 def _build_onb_tz_keyboard(current_offset: int = 3) -> dict:
     rows = []
     row: list[dict] = []
-    for offset, label, _ in _TZ_OPTIONS:
-        btn_label = f"✅ {label}" if offset == current_offset else label
+    for offset, label, city in _TZ_OPTIONS:
+        btn_label = f"✅ {city}" if offset == current_offset else city
         row.append({"text": btn_label, "callback_data": f"onb:tz:{offset}"})
         if len(row) == 4:
             rows.append(row)
