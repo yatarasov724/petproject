@@ -96,7 +96,7 @@ def _apply_ai_ticker_validation(ai_analysis: AIAnalysis, canonical_title: str) -
         return ai_analysis
     validated_str = validate_tickers(",".join(ai_analysis.tickers), canonical_title)
     validated_list = [t for t in validated_str.split(",") if t] if validated_str else []
-    if validated_list == ai_analysis.tickers:
+    if set(validated_list) == set(ai_analysis.tickers):
         return ai_analysis
     return replace(ai_analysis, tickers=validated_list)
 

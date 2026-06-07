@@ -67,7 +67,7 @@ def start() -> None:
     _scheduler.add_job(
         bot_commands_job,
         trigger="interval",
-        seconds=3,
+        seconds=10,
         id="bot_commands",
         max_instances=1,
         coalesce=True,
