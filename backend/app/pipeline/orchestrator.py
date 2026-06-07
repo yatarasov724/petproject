@@ -545,6 +545,22 @@ async def _ai_enrich(
             )
             return
 
+        # Cross-validate AI tickers against canonical_title to prevent contextual mismatches.
+        # analyzer._validate() checks against the 56-ticker whitelist but not keyword presence.
+        # Without this step, AI can assign a valid ticker (e.g. SBER) to a macro headline
+        # that doesn't mention the company — and that ticker appears in the edited channel post.
+        if ai_analysis.tickers:
+            from dataclasses import replace as _dc_replace
+            validated_str = validate_tickers(",".join(ai_analysis.tickers), canonical_title)
+            validated_list = [t for t in validated_str.split(",") if t] if validated_str else []
+            if validated_list != ai_analysis.tickers:
+                logger.info(
+                    "ai_tickers_corrected cluster_id=%d original=%r validated=%r",
+                    cluster["id"], ai_analysis.tickers, validated_list,
+                    extra={"event": "ai_tickers_corrected", "cluster_id": cluster["id"]},
+                )
+                ai_analysis = _dc_replace(ai_analysis, tickers=validated_list)
+
         # Edit the channel message with AI-enriched content.
         from app.telegram.formatter import format_message as _fmt
         from app.telegram import client as _tg
