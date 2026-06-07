@@ -14,6 +14,7 @@ from app.scheduler.jobs import (
     poll_job, cleanup_job, backup_job, heartbeat_job, digest_job,
     bot_commands_job, price_snapshot_job,
     calendar_sync_job, calendar_notify_job, calendar_digest_job,
+    moex_instruments_sync_job,
 )
 
 logger = logging.getLogger(__name__)
@@ -66,7 +67,7 @@ def start() -> None:
     _scheduler.add_job(
         bot_commands_job,
         trigger="interval",
-        seconds=10,
+        seconds=3,
         id="bot_commands",
         max_instances=1,
         coalesce=True,
@@ -87,6 +88,15 @@ def start() -> None:
         hour=2, minute=0,
         timezone="UTC",
         id="calendar_sync",
+        max_instances=1,
+        coalesce=True,
+    )
+    _scheduler.add_job(
+        moex_instruments_sync_job,
+        "cron",
+        hour=3, minute=0,
+        timezone="UTC",
+        id="moex_instruments_sync",
         max_instances=1,
         coalesce=True,
     )
@@ -116,8 +126,9 @@ def start() -> None:
     _scheduler.start()
     logger.info(
         "Scheduler started (poll=60s, cleanup=24h, backup=6h, heartbeat=5m, "
-        "digest=22:00 MSK, bot=10s, price_snapshots=1h, "
-        "calendar_sync=02:00 UTC, calendar_notify=06:00 UTC, calendar_digest=Sun 16:00 UTC)"
+        "digest=22:00 MSK, bot=3s, price_snapshots=1h, "
+        "calendar_sync=02:00 UTC, calendar_notify=06:00 UTC, calendar_digest=Sun 16:00 UTC, "
+        "moex_instruments_sync=03:00 UTC)"
     )
 
 

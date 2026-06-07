@@ -591,3 +591,24 @@ def _format_weekly_digest(past_events: list, future_events: list) -> str:
         lines.extend(_row(e) for e in future_events)
 
     return "\n".join(lines)
+
+
+async def moex_instruments_sync_job() -> None:
+    """Sync TQBR instruments from MOEX ISS and cache in moex_instruments table."""
+    try:
+        instruments = await MoexIssClient().fetch_instruments()
+        if not instruments:
+            logger.warning("moex_instruments_sync: empty response from MOEX ISS")
+            return
+        db = get_db()
+        try:
+            count = queries.upsert_moex_instruments(db, instruments)
+        finally:
+            db.close()
+        logger.info(
+            "moex_instruments_sync: upserted %d instruments",
+            count,
+            extra={"event": "moex_instruments_synced", "count": count},
+        )
+    except Exception:
+        logger.warning("moex_instruments_sync failed", exc_info=True)

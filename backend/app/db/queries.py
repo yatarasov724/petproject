@@ -1528,3 +1528,33 @@ def get_user_stats(db: DBConnection, hours: int) -> dict:
         (hours,),
     ).fetchone()["n"]
     return {"total": total, "new": new_users, "active": active, "commands": commands_n}
+
+
+# ── MOEX instruments registry ─────────────────────────────────────────────────
+
+def upsert_moex_instruments(db: DBConnection, instruments: list[dict]) -> int:
+    """
+    Upsert TQBR instruments into moex_instruments table.
+    Returns count of rows inserted/updated.
+    """
+    if not instruments:
+        return 0
+    db.executemany(
+        """
+        INSERT INTO moex_instruments (ticker, short_name, full_name, synced_at)
+        VALUES (%(ticker)s, %(short_name)s, %(full_name)s, NOW())
+        ON CONFLICT (ticker) DO UPDATE SET
+            short_name = EXCLUDED.short_name,
+            full_name  = EXCLUDED.full_name,
+            synced_at  = EXCLUDED.synced_at
+        """,
+        instruments,
+    )
+    db.commit()
+    return len(instruments)
+
+
+def get_moex_tickers(db: DBConnection) -> set[str]:
+    """Return set of all ticker symbols from moex_instruments."""
+    rows = db.execute("SELECT ticker FROM moex_instruments").fetchall()
+    return {row["ticker"] for row in rows}

@@ -40,6 +40,11 @@ _REPORT_KEYWORDS: list[tuple[str, str]] = [
     ("РСБУ", "РСБУ"),
     ("GAAP", "GAAP"),
 ]
+_INSTRUMENTS_URL = (
+    f"{_BASE}/engines/stock/markets/shares/boards/TQBR/securities.json"
+    "?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME,SECNAME"
+)
+
 
 
 @dataclass(frozen=True)
@@ -178,3 +183,43 @@ class MoexIssClient:
         dividends = await self.fetch_dividends(ticker)
         others    = await self.fetch_events(ticker, days_ahead=days_ahead)
         return dividends + others
+
+    async def fetch_instruments(self) -> list[dict]:
+        """
+        Return list of {ticker, short_name, full_name} for all TQBR board instruments.
+        Returns [] on any failure.
+        """
+        try:
+            async with aiohttp.ClientSession(
+                headers={"User-Agent": _USER_AGENT}, timeout=_TIMEOUT
+            ) as session:
+                async with session.get(_INSTRUMENTS_URL) as resp:
+                    if resp.status != 200:
+                        logger.warning("[MOEX] instruments HTTP %d", resp.status)
+                        return []
+                    data = await resp.json(content_type=None)
+
+            block = data.get("securities", {})
+            columns = block.get("columns", [])
+            rows = block.get("data", [])
+            if not columns or not rows:
+                return []
+
+            col = {name: i for i, name in enumerate(columns)}
+            if "SECID" not in col or "SHORTNAME" not in col or "SECNAME" not in col:
+                logger.warning("[MOEX] instruments: unexpected columns %s", columns)
+                return []
+
+            return [
+                {
+                    "ticker":     row[col["SECID"]],
+                    "short_name": row[col["SHORTNAME"]] or "",
+                    "full_name":  row[col["SECNAME"]] or "",
+                }
+                for row in rows
+                if row[col["SECID"]]
+            ]
+        except Exception:
+            logger.warning("[MOEX] fetch_instruments failed", exc_info=True)
+            return []
+

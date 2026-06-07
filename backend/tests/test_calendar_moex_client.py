@@ -109,3 +109,43 @@ async def test_fetch_events_network_error_returns_empty():
     with patch("aiohttp.ClientSession", return_value=session):
         events = await MoexIssClient().fetch_events("SBER", days_ahead=90)
     assert events == []
+
+
+# ── fetch_instruments ─────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_fetch_instruments_returns_list():
+    payload = {
+        "securities": {
+            "columns": ["SECID", "SHORTNAME", "SECNAME"],
+            "data": [
+                ["SBER", "СБЕРБАНК ао", "Сбербанк России ПАО ао"],
+                ["GAZP", "ГАЗПРОМ ао", "Газпром ПАО ао"],
+            ],
+        }
+    }
+    with patch("aiohttp.ClientSession", return_value=_mock_session(_mock_response(payload))):
+        instruments = await MoexIssClient().fetch_instruments()
+
+    assert len(instruments) == 2
+    tickers = [i["ticker"] for i in instruments]
+    assert "SBER" in tickers
+    assert "GAZP" in tickers
+    sber = next(i for i in instruments if i["ticker"] == "SBER")
+    assert sber["short_name"] == "СБЕРБАНК ао"
+    assert sber["full_name"] == "Сбербанк России ПАО ао"
+
+
+@pytest.mark.asyncio
+async def test_fetch_instruments_http_error_returns_empty():
+    with patch("aiohttp.ClientSession", return_value=_mock_session(_mock_response({}, status=503))):
+        instruments = await MoexIssClient().fetch_instruments()
+    assert instruments == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_instruments_empty_data():
+    payload = {"securities": {"columns": ["SECID", "SHORTNAME", "SECNAME"], "data": []}}
+    with patch("aiohttp.ClientSession", return_value=_mock_session(_mock_response(payload))):
+        instruments = await MoexIssClient().fetch_instruments()
+    assert instruments == []

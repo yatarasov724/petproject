@@ -255,3 +255,11 @@ CREATE TABLE IF NOT EXISTS bot_command_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_bot_command_log_ts ON bot_command_log(ts);
+
+-- MOEX ISS instruments registry (TQBR board, updated daily)
+CREATE TABLE IF NOT EXISTS moex_instruments (
+    ticker       TEXT    NOT NULL PRIMARY KEY,
+    short_name   TEXT    NOT NULL,
+    full_name    TEXT    NOT NULL,
+    synced_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
