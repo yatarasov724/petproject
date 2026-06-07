@@ -144,6 +144,17 @@ async def test_fetch_instruments_http_error_returns_empty():
 
 
 @pytest.mark.asyncio
+async def test_fetch_instruments_network_error_returns_empty():
+    session = MagicMock()
+    session.get = MagicMock(side_effect=Exception("connection refused"))
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=False)
+    with patch("aiohttp.ClientSession", return_value=session):
+        instruments = await MoexIssClient().fetch_instruments()
+    assert instruments == []
+
+
+@pytest.mark.asyncio
 async def test_fetch_instruments_empty_data():
     payload = {"securities": {"columns": ["SECID", "SHORTNAME", "SECNAME"], "data": []}}
     with patch("aiohttp.ClientSession", return_value=_mock_session(_mock_response(payload))):

@@ -93,7 +93,7 @@ def start() -> None:
     )
     _scheduler.add_job(
         moex_instruments_sync_job,
-        "cron",
+        trigger="cron",
         hour=3, minute=0,
         timezone="UTC",
         id="moex_instruments_sync",

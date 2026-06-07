@@ -611,4 +611,4 @@ async def moex_instruments_sync_job() -> None:
             extra={"event": "moex_instruments_synced", "count": count},
         )
     except Exception:
-        logger.warning("moex_instruments_sync failed", exc_info=True)
+        logger.exception("moex_instruments_sync_job crashed")
