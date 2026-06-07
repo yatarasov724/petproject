@@ -264,3 +264,83 @@ class TestFormatDigest:
         rows = [_make_row(f"Событие {i}") for i in range(3)]
         text = format_digest(rows, ai_digest=None, label="22:00")
         assert text.count("•") == 3
+
+
+# ── digest diversity (_extract_digest_speaker + _diverse_top) ─────────────────
+
+from app.scheduler.jobs import _extract_digest_speaker, _diverse_top, DIGEST_MAX_PER_SPEAKER
+
+
+class TestExtractDigestSpeaker:
+    def test_colon_format(self):
+        assert _extract_digest_speaker("Сечин: санкции стали нормой") == "сечин"
+
+    def test_verb_after_name(self):
+        assert _extract_digest_speaker("Сечин предупредил о последствиях") == "сечин"
+
+    def test_no_speaker_returns_none(self):
+        assert _extract_digest_speaker("Российская экономика продолжает рост") is None
+
+    def test_empty_returns_none(self):
+        assert _extract_digest_speaker("") is None
+
+
+def _cluster(title: str, score: int = 65) -> dict:
+    return {
+        "id": hash(title),
+        "canonical_title": title,
+        "best_score": score,
+        "source_count": 1,
+        "tickers": None,
+        "last_sent_at": None,
+    }
+
+
+class TestDiverseTop:
+    def test_keeps_all_when_diverse(self):
+        clusters = [
+            _cluster("ЦБ сохранил ключевую ставку"),
+            _cluster("Газпром снизил дивиденды"),
+            _cluster("Сечин: нефть подорожает"),
+        ]
+        result = _diverse_top(clusters, limit=10)
+        assert len(result) == 3
+
+    def test_caps_same_speaker_at_limit(self):
+        clusters = [
+            _cluster(f"Сечин: заявление {i}") for i in range(DIGEST_MAX_PER_SPEAKER + 2)
+        ]
+        result = _diverse_top(clusters, limit=10)
+        assert len(result) == DIGEST_MAX_PER_SPEAKER
+
+    def test_respects_limit_param(self):
+        clusters = [_cluster(f"ЦБ: событие {i}") for i in range(10)]
+        result = _diverse_top(clusters, limit=3)
+        assert len(result) == 3
+
+    def test_mixed_speakers_keeps_all_under_limit(self):
+        clusters = [
+            _cluster("Сечин: заявление 1"),
+            _cluster("Греф: комментарий 1"),
+            _cluster("Сечин: заявление 2"),
+            _cluster("Греф: комментарий 2"),
+            _cluster("Сечин: заявление 3"),  # this one should be dropped
+            _cluster("ЦБ сохранил ставку"),   # no speaker — always passes
+        ]
+        result = _diverse_top(clusters, limit=10)
+        sechin_count = sum(1 for c in result if "Сечин" in c["canonical_title"])
+        gref_count   = sum(1 for c in result if "Греф" in c["canonical_title"])
+        assert sechin_count == DIGEST_MAX_PER_SPEAKER
+        assert gref_count   == DIGEST_MAX_PER_SPEAKER
+        assert len(result) == 5  # 2 Сечин + 2 Греф + 1 ЦБ
+
+    def test_preserves_order(self):
+        clusters = [
+            _cluster("Событие А", score=90),
+            _cluster("Событие Б", score=70),
+            _cluster("Событие В", score=50),
+        ]
+        result = _diverse_top(clusters, limit=10)
+        assert [c["canonical_title"] for c in result] == [
+            "Событие А", "Событие Б", "Событие В"
+        ]

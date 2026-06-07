@@ -58,7 +58,42 @@ ARTICLE_MAX_AGE_HOURS = 24
 DUP_GUARD_COSINE_THRESHOLD = 0.75
 DUP_GUARD_HOURS = 12  # window for cross-cluster duplicate guard
 
+SPEAKER_SATURATION_LIMIT = 2   # max posts from same speaker before silencing
+SPEAKER_SATURATION_HOURS = 8   # lookback window for speaker saturation check
+
 logger = logging.getLogger(__name__)
+
+
+import re as _re_speaker
+
+_SPEAKER_RE = _re_speaker.compile(r'^([А-ЯЁ][а-яё]{1,14})\s*[:\s]')
+_PERSON_VERBS = frozenset({
+    "заявил", "сообщил", "рассказал", "предупредил", "допустил",
+    "назвал", "спрогнозировал", "оценил", "заявила", "сообщила",
+    "призвал", "призвала", "подчеркнул", "подчеркнула", "отметил", "отметила",
+})
+
+
+def _extract_speaker(title: str) -> str | None:
+    """
+    Return the lowercase surname if the title starts with a single Russian proper noun
+    followed by ':' or a known attribution verb.
+    Returns None when no speaker pattern is detected.
+    """
+    if not title:
+        return None
+    m = _SPEAKER_RE.match(title)
+    if not m:
+        return None
+    candidate = m.group(1)
+    # Must be followed by ':' (direct citation) or a verb (indirect attribution)
+    rest = title[len(candidate):].lstrip()
+    if rest.startswith(":"):
+        return candidate.lower()
+    next_word = rest.split()[0].rstrip(",.") if rest.split() else ""
+    if next_word in _PERSON_VERBS:
+        return candidate.lower()
+    return None
 
 
 # ── result type ───────────────────────────────────────────────────────────────
@@ -278,6 +313,32 @@ async def _run(db: DBConnection, article: RawArticle) -> ArticleResult:
                         Outcome.SILENCE, article.source_name, short,
                         score=score_result.score, cluster_id=cluster["id"],
                     )
+
+    # ── step 6c: speaker saturation guard ────────────────────────────────
+    # Prevents a single person's press conference from flooding the channel.
+    # Only applies to new clusters — updates to already-published events are fine.
+    if cluster["status"] == "new":
+        speaker = _extract_speaker(cluster["canonical_title"])
+        if speaker:
+            recent = queries.count_recent_speaker_publishes(
+                db, speaker, within_hours=SPEAKER_SATURATION_HOURS
+            )
+            if recent >= SPEAKER_SATURATION_LIMIT:
+                metrics.inc(metrics.EVENTS_SILENCED)
+                logger.info(
+                    "speaker saturation: %d recent posts from '%s', silencing cluster #%d",
+                    recent, speaker, cluster["id"],
+                    extra={
+                        "event":      "speaker_saturation",
+                        "speaker":    speaker,
+                        "recent":     recent,
+                        "cluster_id": cluster["id"],
+                    },
+                )
+                return ArticleResult(
+                    Outcome.SILENCE, article.source_name, short,
+                    score=score_result.score, cluster_id=cluster["id"],
+                )
 
     # ── step 7: publish decision ──────────────────────────────────────────
     pub = decide(cluster, score_result)

@@ -478,6 +478,29 @@ def get_top_sent_clusters(
     ).fetchall()
 
 
+def count_recent_speaker_publishes(
+    db: DBConnection,
+    speaker_prefix: str,
+    within_hours: int,
+) -> int:
+    """
+    Count published clusters whose canonical_title starts with speaker_prefix (case-insensitive).
+    Used to detect speaker saturation: too many posts from the same person in a short window.
+    """
+    cutoff = _iso(datetime.now(timezone.utc) - timedelta(hours=within_hours))
+    row = db.execute(
+        """
+        SELECT COUNT(*) AS cnt
+        FROM   event_clusters
+        WHERE  last_sent_at >= %s
+          AND  status IN ('published', 'updated')
+          AND  LOWER(canonical_title) LIKE %s
+        """,
+        (cutoff, f"{speaker_prefix.lower()}%"),
+    ).fetchone()
+    return int(row["cnt"]) if row else 0
+
+
 # ── telegram_sends ────────────────────────────────────────────────────────────
 
 def has_recent_send_attempt(
@@ -733,7 +756,8 @@ def get_subscribed_users_with_settings(
                ps.user_id,
                us.quiet_from,
                us.quiet_to,
-               COALESCE(us.utc_offset, 3) AS utc_offset
+               COALESCE(us.utc_offset, 3)  AS utc_offset,
+               COALESCE(us.min_score, 30)  AS min_score
         FROM   portfolio_subscriptions ps
         LEFT JOIN users u ON u.telegram_id = ps.user_id
         LEFT JOIN user_settings us ON us.user_id = u.id
@@ -747,6 +771,7 @@ def get_subscribed_users_with_settings(
             "quiet_from": r["quiet_from"],
             "quiet_to":   r["quiet_to"],
             "utc_offset": r["utc_offset"],
+            "min_score":  r["min_score"],
         }
         for r in rows
     ]

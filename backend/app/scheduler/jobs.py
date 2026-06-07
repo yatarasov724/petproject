@@ -48,9 +48,52 @@ _SILENCE_ALERT_COOLDOWN_H = 2  # don't re-fire the dedicated alert within this w
 _last_silence_alert: datetime | None = None
 _last_snapshot_ts: datetime | None = None
 
-_DIGEST_LIMIT     = 10  # max clusters in the digest
-_DIGEST_PRE_FETCH = 30  # fetch 3× before RF filter to have enough candidates
+_DIGEST_LIMIT          = 10  # max clusters in the digest
+_DIGEST_PRE_FETCH      = 30  # fetch 3× before RF filter to have enough candidates
+DIGEST_MAX_PER_SPEAKER = 2   # max digest items from the same speaker
 _MSK = ZoneInfo("Europe/Moscow")
+
+import re as _re_jobs
+
+_DIGEST_SPEAKER_RE = _re_jobs.compile(r'^([А-ЯЁ][а-яё]{1,14})\s*[:\s]')
+_DIGEST_PERSON_VERBS = frozenset({
+    "заявил", "сообщил", "рассказал", "предупредил", "допустил",
+    "назвал", "спрогнозировал", "оценил", "заявила", "сообщила",
+    "призвал", "призвала", "подчеркнул", "подчеркнула", "отметил", "отметила",
+})
+
+
+def _extract_digest_speaker(title: str) -> str | None:
+    """Return lowercase surname if title starts with a detectable speaker pattern."""
+    if not title:
+        return None
+    m = _DIGEST_SPEAKER_RE.match(title)
+    if not m:
+        return None
+    candidate = m.group(1)
+    rest = title[len(candidate):].lstrip()
+    if rest.startswith(":"):
+        return candidate.lower()
+    next_word = rest.split()[0].rstrip(",.") if rest.split() else ""
+    if next_word in _DIGEST_PERSON_VERBS:
+        return candidate.lower()
+    return None
+
+
+def _diverse_top(clusters: list, limit: int) -> list:
+    """Greedy diversity selection: cap DIGEST_MAX_PER_SPEAKER items per detected speaker."""
+    speaker_counts: dict[str, int] = {}
+    selected = []
+    for c in clusters:
+        speaker = _extract_digest_speaker(c["canonical_title"])
+        if speaker:
+            if speaker_counts.get(speaker, 0) >= DIGEST_MAX_PER_SPEAKER:
+                continue
+            speaker_counts[speaker] = speaker_counts.get(speaker, 0) + 1
+        selected.append(c)
+        if len(selected) >= limit:
+            break
+    return selected
 
 
 async def poll_job() -> None:
@@ -260,7 +303,10 @@ async def digest_job(label: str) -> None:
         candidates = queries.get_top_sent_clusters(
             db, since_dt=since_dt, limit=_DIGEST_PRE_FETCH
         )
-        clusters = [c for c in candidates if is_russia_relevant(c)][:_DIGEST_LIMIT]
+        clusters = _diverse_top(
+            [c for c in candidates if is_russia_relevant(c)],
+            limit=_DIGEST_LIMIT,
+        )
 
         if not clusters:
             logger.info(
