@@ -7,6 +7,8 @@ the cluster canonical_title. Commodity tickers are always kept.
 """
 import pytest
 from app.pipeline.ticker_validator import validate_tickers
+from dataclasses import replace
+from app.ai.analyzer import AIAnalysis
 
 
 def test_valid_ticker_kept():
@@ -86,9 +88,6 @@ def test_ai_mixed_valid_and_invalid():
     result = validate_tickers("GAZP,VTBR", "Цена природного газа выросла на 10%")
     assert result == "GAZP"
 
-
-from dataclasses import replace
-from app.ai.analyzer import AIAnalysis
 
 
 def _apply_ai_ticker_validation(ai_analysis: AIAnalysis, canonical_title: str) -> AIAnalysis:

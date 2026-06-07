@@ -549,11 +549,11 @@ async def _ai_enrich(
         # analyzer._validate() checks against the 56-ticker whitelist but not keyword presence.
         # Without this step, AI can assign a valid ticker (e.g. SBER) to a macro headline
         # that doesn't mention the company — and that ticker appears in the edited channel post.
+        from dataclasses import replace as _dc_replace
         if ai_analysis.tickers:
-            from dataclasses import replace as _dc_replace
             validated_str = validate_tickers(",".join(ai_analysis.tickers), canonical_title)
             validated_list = [t for t in validated_str.split(",") if t] if validated_str else []
-            if validated_list != ai_analysis.tickers:
+            if set(validated_list) != set(ai_analysis.tickers):
                 logger.info(
                     "ai_tickers_corrected cluster_id=%d original=%r validated=%r",
                     cluster["id"], ai_analysis.tickers, validated_list,
@@ -567,6 +567,8 @@ async def _ai_enrich(
         enriched_text = _fmt(cluster, score_result, pub.decision, ai_analysis, correlations)
         await _tg.edit_message(message_id, enriched_text)
 
+        # ai_analysis.tickers are already cross-validated above; notify_with_ai
+        # re-validates independently as defense-in-depth for the DM path.
         if tickers_raw:
             from app.bot.portfolio import notify_with_ai
             await notify_with_ai(
