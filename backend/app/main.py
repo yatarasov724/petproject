@@ -108,7 +108,7 @@ def health():
     db = get_db()
     try:
         source_rows = db.execute(
-            "SELECT status, COUNT(*) AS n FROM rss_sources GROUP BY status"
+            "SELECT status, COUNT(*) AS n FROM rss_sources WHERE enabled = 1 GROUP BY status"
         ).fetchall()
         from datetime import datetime, timedelta, timezone
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
