@@ -421,6 +421,7 @@ def mark_cluster_sent(
     cluster_id: int,
     decision: str,
     score: int,
+    source_count: int,
     cooldown_hours: int = 2,
 ) -> None:
     now = datetime.now(timezone.utc)
@@ -429,13 +430,14 @@ def mark_cluster_sent(
     db.execute(
         """
         UPDATE event_clusters
-        SET    status          = %s,
-               last_sent_at   = %s,
-               cooldown_until  = %s,
-               published_score = %s
+        SET    status                 = %s,
+               last_sent_at          = %s,
+               cooldown_until        = %s,
+               published_score       = %s,
+               published_source_count = %s
         WHERE  id = %s
         """,
-        (status, _iso(now), cooldown, score, cluster_id),
+        (status, _iso(now), cooldown, score, source_count, cluster_id),
     )
     db.commit()
 

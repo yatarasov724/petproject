@@ -59,6 +59,7 @@ def _make_cluster_row(db, **overrides):
         "last_sent_at": None,
         "cooldown_until": None,
         "published_score": None,
+        "published_source_count": 0,
     }
     defaults.update(overrides)
 
@@ -67,8 +68,8 @@ def _make_cluster_row(db, **overrides):
         INSERT INTO event_clusters
             (canonical_title, title_tokens, keywords, best_score, source_count,
              article_count, status, first_seen_at, last_updated_at,
-             last_sent_at, cooldown_until, published_score)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+             last_sent_at, cooldown_until, published_score, published_source_count)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         RETURNING id
         """,
         (
@@ -77,7 +78,7 @@ def _make_cluster_row(db, **overrides):
             defaults["article_count"], defaults["status"],
             defaults["first_seen_at"], defaults["last_updated_at"],
             defaults["last_sent_at"], defaults["cooldown_until"],
-            defaults["published_score"],
+            defaults["published_score"], defaults["published_source_count"],
         ),
     )
     db.commit()

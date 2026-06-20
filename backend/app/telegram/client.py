@@ -311,6 +311,7 @@ async def send(
             cluster_id=pub_decision.cluster_id,
             decision=pub_decision.decision.value,
             score=pub_decision.score,
+            source_count=cluster["source_count"],
         )
         queries.log_send(
             db,
@@ -351,6 +352,7 @@ async def send(
             cluster_id=pub_decision.cluster_id,
             decision=pub_decision.decision.value,
             score=pub_decision.score,
+            source_count=cluster["source_count"],
         )
     else:
         metrics.inc(metrics.TG_SENT_FAIL)

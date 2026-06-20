@@ -60,7 +60,8 @@ CREATE TABLE IF NOT EXISTS event_clusters (
     last_updated_at TEXT    NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
     last_sent_at    TEXT,
     cooldown_until  TEXT,
-    published_score INTEGER
+    published_score INTEGER,
+    published_source_count INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_clusters_status          ON event_clusters(status);
