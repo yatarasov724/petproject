@@ -2,17 +2,17 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Eliminate two duplicate-publish bugs: same cluster re-sent on UPDATE when no new sources arrived, and 6+ news items published in 20 minutes about the same event.
+**Goal:** Eliminate two duplicate-publish bugs: same cluster re-sent on UPDATE when no new sources arrived, and multiple news items published in a 30-minute burst about the same event.
 
 **Architecture:** Two independent fixes. Fix 1 adds `published_source_count` to `event_clusters` so `decide()` can verify source growth before UPDATE. Fix 2 adds a 30-minute burst guard to `orchestrator.py` that silences clusters semantically similar (cosine ≥ 0.50) to any cluster published in the last 30 minutes.
 
-**Tech Stack:** Python 3.11, PostgreSQL 16 (psycopg2), sentence-transformers embeddings (float32 bytes), pytest with real PostgreSQL test DB.
+**Tech Stack:** Python 3.11, PostgreSQL 16 (psycopg2), sentence-transformers embeddings (384-dim float32 bytes), pytest with real PostgreSQL test DB.
 
 ## Global Constraints
 
 - Run tests with: `docker exec -e TEST_DATABASE_URL=postgresql://postgres:postgres@postgres/moex_assistant_test backend-backend-1 pytest tests/ -q`
 - All SQL uses `%s` placeholders (psycopg2 style), never f-strings
-- Timestamps stored as ISO strings via `_iso()` helper in `queries.py`
+- Timestamps stored as ISO strings via `_iso()` helper in `queries.py` — format: `"%Y-%m-%dT%H:%M:%SZ"`
 - No new dependencies allowed
 - Every commit must leave tests green
 
@@ -24,21 +24,21 @@
 - Modify: `backend/app/db/schema.sql` (add column to `event_clusters`)
 - Modify: `backend/app/db/queries.py` (`mark_cluster_sent` signature + SQL)
 - Modify: `backend/app/telegram/client.py` (two call sites of `mark_cluster_sent`)
-- Modify: `backend/tests/test_publish_decision.py` (`_make_cluster_row` helper)
+- Modify: `backend/tests/test_publish_decision.py` (`_make_cluster_row` helper + INSERT)
 
 **Interfaces:**
-- Produces: `queries.mark_cluster_sent(db, cluster_id, decision, score, source_count, cooldown_hours=2)` — new `source_count: int` parameter, stored in `published_source_count`
+- Produces: `queries.mark_cluster_sent(db, cluster_id, decision, score, source_count, cooldown_hours=2)` — new `source_count: int` parameter (no default — callers must pass it explicitly)
 - Produces: `cluster["published_source_count"]` available on every row returned by `queries.get_cluster()`
 
 - [ ] **Step 1: Add column to schema.sql**
 
-In `backend/app/db/schema.sql`, in the `event_clusters` table definition, after the `published_score INTEGER` line add:
-
+In `backend/app/db/schema.sql`, in the `event_clusters` CREATE TABLE block, replace:
 ```sql
-    published_source_count INTEGER NOT NULL DEFAULT 0
+    last_sent_at    TEXT,
+    cooldown_until  TEXT,
+    published_score INTEGER
 ```
-
-The block around it becomes:
+with:
 ```sql
     last_sent_at    TEXT,
     cooldown_until  TEXT,
@@ -52,7 +52,7 @@ The block around it becomes:
 ssh root@213.108.1.38 'docker exec backend-postgres-1 psql -U postgres -d moex_assistant -c "ALTER TABLE event_clusters ADD COLUMN IF NOT EXISTS published_source_count INTEGER NOT NULL DEFAULT 0;"'
 ```
 
-Expected output: `ALTER TABLE`
+Expected: `ALTER TABLE`
 
 - [ ] **Step 3: Apply migration to test DB**
 
@@ -60,22 +60,12 @@ Expected output: `ALTER TABLE`
 ssh root@213.108.1.38 'docker exec backend-postgres-1 psql -U postgres -d moex_assistant_test -c "ALTER TABLE event_clusters ADD COLUMN IF NOT EXISTS published_source_count INTEGER NOT NULL DEFAULT 0;"'
 ```
 
-Expected output: `ALTER TABLE`
+Expected: `ALTER TABLE`
 
 - [ ] **Step 4: Update `mark_cluster_sent` in queries.py**
 
-Current signature at line ~419:
-```python
-def mark_cluster_sent(
-    db: DBConnection,
-    cluster_id: int,
-    decision: str,
-    score: int,
-    cooldown_hours: int = 2,
-) -> None:
-```
+Find the function starting at `def mark_cluster_sent(` and replace the entire function:
 
-Replace the entire function with:
 ```python
 def mark_cluster_sent(
     db: DBConnection,
@@ -105,72 +95,42 @@ def mark_cluster_sent(
 
 - [ ] **Step 5: Update both call sites in telegram/client.py**
 
-**Dry-run call site** (around line 309):
+Search for the two `queries.mark_cluster_sent(` calls and add `source_count=cluster["source_count"]` to each.
+
+**Dry-run call site** (inside `if settings.dry_run:` block):
 ```python
-queries.mark_cluster_sent(
-    db,
-    cluster_id=pub_decision.cluster_id,
-    decision=pub_decision.decision.value,
-    score=pub_decision.score,
-    source_count=cluster["source_count"],
-)
+        queries.mark_cluster_sent(
+            db,
+            cluster_id=pub_decision.cluster_id,
+            decision=pub_decision.decision.value,
+            score=pub_decision.score,
+            source_count=cluster["source_count"],
+        )
 ```
 
-**Real-send call site** (around line 349):
+**Real-send call site** (inside `if ok:` block):
 ```python
-queries.mark_cluster_sent(
-    db,
-    cluster_id=pub_decision.cluster_id,
-    decision=pub_decision.decision.value,
-    score=pub_decision.score,
-    source_count=cluster["source_count"],
-)
+        queries.mark_cluster_sent(
+            db,
+            cluster_id=pub_decision.cluster_id,
+            decision=pub_decision.decision.value,
+            score=pub_decision.score,
+            source_count=cluster["source_count"],
+        )
 ```
 
 - [ ] **Step 6: Update `_make_cluster_row` in test_publish_decision.py**
 
-Add `published_source_count` to the defaults dict and the INSERT:
+Add `"published_source_count": 0` to the `defaults` dict, and add `published_source_count` to both the column list and values tuple in the INSERT:
 
-```python
-def _make_cluster_row(db, **overrides):
-    defaults = {
-        "canonical_title": "ЦБ повысил ключевую ставку",
-        "title_tokens": "ключевую повысил ставку цб",
-        "keywords": "ключевую повысил ставку цб",
-        "best_score": 55,
-        "source_count": 1,
-        "article_count": 1,
-        "status": "new",
-        "first_seen_at": _iso(_utcnow()),
-        "last_updated_at": _iso(_utcnow()),
-        "last_sent_at": None,
-        "cooldown_until": None,
-        "published_score": None,
-        "published_source_count": 0,
-    }
-    defaults.update(overrides)
-
-    cur = db.execute(
-        """
-        INSERT INTO event_clusters
-            (canonical_title, title_tokens, keywords, best_score, source_count,
-             article_count, status, first_seen_at, last_updated_at,
-             last_sent_at, cooldown_until, published_score, published_source_count)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-        RETURNING id
-        """,
-        (
-            defaults["canonical_title"], defaults["title_tokens"],
-            defaults["keywords"], defaults["best_score"], defaults["source_count"],
-            defaults["article_count"], defaults["status"],
-            defaults["first_seen_at"], defaults["last_updated_at"],
-            defaults["last_sent_at"], defaults["cooldown_until"],
-            defaults["published_score"], defaults["published_source_count"],
-        ),
-    )
+Column list becomes:
+```
+(canonical_title, title_tokens, keywords, best_score, source_count,
+ article_count, status, first_seen_at, last_updated_at,
+ last_sent_at, cooldown_until, published_score, published_source_count)
 ```
 
-(Keep the rest of `_make_cluster_row` unchanged — it fetches back via `get_cluster`.)
+Values tuple gains `defaults["published_source_count"]` at the end. The `%s` count increases by 1 accordingly.
 
 - [ ] **Step 7: Run tests**
 
@@ -178,7 +138,7 @@ def _make_cluster_row(db, **overrides):
 ssh root@213.108.1.38 'docker exec -e TEST_DATABASE_URL=postgresql://postgres:postgres@postgres/moex_assistant_test backend-backend-1 pytest tests/ -q'
 ```
 
-Expected: all tests pass (no test logic changed yet, just schema + helper).
+Expected: all tests pass.
 
 - [ ] **Step 8: Commit**
 
@@ -192,15 +152,15 @@ ssh root@213.108.1.38 'cd /opt/newsparser && git add backend/app/db/schema.sql b
 
 **Files:**
 - Modify: `backend/app/pipeline/publish_decision.py` (rule 5 logic)
-- Modify: `backend/tests/test_publish_decision.py` (new tests)
+- Modify: `backend/tests/test_publish_decision.py` (new test class)
 
 **Interfaces:**
-- Consumes: `cluster["published_source_count"]` (from Task 1)
+- Consumes: `cluster["published_source_count"]` (available after Task 1)
 - Produces: `decide()` returns SILENCE when `source_count == published_source_count` even if `source_count >= UPDATE_SOURCE_FLOOR`
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `test_publish_decision.py`:
+Add to `test_publish_decision.py`, after existing test classes:
 
 ```python
 class TestRule5UpdateRequiresSourceGrowth:
@@ -211,7 +171,7 @@ class TestRule5UpdateRequiresSourceGrowth:
             status="published",
             source_count=3,
             published_score=55,
-            published_source_count=2,  # was 2, now 3 → grew
+            published_source_count=2,   # was 2 at last send, now 3 → grew
             cooldown_until=_iso(_utcnow() - timedelta(hours=3)),
         )
         score = compute_score("ЦБ повысил ключевую ставку", source_count=3)
@@ -225,15 +185,15 @@ class TestRule5UpdateRequiresSourceGrowth:
             status="published",
             source_count=3,
             published_score=55,
-            published_source_count=3,  # same → no growth
+            published_source_count=3,   # same as source_count → no growth
             cooldown_until=_iso(_utcnow() - timedelta(hours=3)),
         )
         score = compute_score("ЦБ повысил ключевую ставку", source_count=3)
         result = decide(cluster, score)
         assert result.decision == Decision.SILENCE
 
-    def test_new_event_unaffected_by_published_source_count(self, db):
-        """NEW_EVENT clusters (published_source_count=0) still publish normally."""
+    def test_new_event_unaffected(self, db):
+        """NEW_EVENT clusters always publish regardless of published_source_count."""
         cluster = _make_cluster_row(
             db,
             status="new",
@@ -251,27 +211,11 @@ class TestRule5UpdateRequiresSourceGrowth:
 ssh root@213.108.1.38 'docker exec -e TEST_DATABASE_URL=postgresql://postgres:postgres@postgres/moex_assistant_test backend-backend-1 pytest tests/test_publish_decision.py::TestRule5UpdateRequiresSourceGrowth -v'
 ```
 
-Expected: `FAILED` — `test_update_silenced_when_source_count_unchanged` fails because rule 5 currently returns UPDATE.
+Expected: `test_update_silenced_when_source_count_unchanged` FAILS (currently returns UPDATE).
 
 - [ ] **Step 3: Fix rule 5 in publish_decision.py**
 
-In `decide()`, replace the rule 5 block:
-
-```python
-    # ── rule 5: cross-source confirmation ─────────────────────────────────
-    if source_count >= UPDATE_SOURCE_FLOOR:
-        return PublishDecision(
-            decision=Decision.UPDATE,
-            cluster_id=cluster_id,
-            score=score_result.score,
-            reason=(
-                f"confirmed by {source_count} sources · "
-                f"score={score_result.score}"
-            ),
-        )
-```
-
-With:
+In `decide()`, find the rule 5 block and replace it:
 
 ```python
     # ── rule 5: cross-source confirmation ─────────────────────────────────
@@ -294,7 +238,7 @@ With:
 ssh root@213.108.1.38 'docker exec -e TEST_DATABASE_URL=postgresql://postgres:postgres@postgres/moex_assistant_test backend-backend-1 pytest tests/test_publish_decision.py -v'
 ```
 
-Expected: all tests pass.
+Expected: all pass.
 
 - [ ] **Step 5: Run full suite**
 
@@ -320,13 +264,13 @@ ssh root@213.108.1.38 'cd /opt/newsparser && git add backend/app/pipeline/publis
 - Create: `backend/tests/test_burst_guard.py`
 
 **Interfaces:**
-- Consumes: `embedder.cosine(a, b)`, `dedup.jaccard(tokens_a, tokens_b)` — already imported in orchestrator
-- Produces: `queries.get_recent_burst_clusters(db, within_minutes, exclude_cluster_id)` → `list[Row]` with keys `title_tokens: str`, `embedding: bytes | None`
-- Produces: `BURST_GUARD_MINUTES = 30`, `BURST_GUARD_COSINE = 0.50` constants in orchestrator
+- Consumes: `embedder.cosine(a: bytes, b: bytes) -> float`, `dedup.jaccard(a: str, b: str) -> float` (already imported in orchestrator)
+- Produces: `queries.get_recent_burst_clusters(db, within_minutes: int, exclude_cluster_id: int) -> list[Any]` — rows with keys `title_tokens: str` and `embedding: bytes | None`
+- Produces: `BURST_GUARD_MINUTES = 30` and `BURST_GUARD_COSINE = 0.50` module-level constants in orchestrator
 
 - [ ] **Step 1: Add `get_recent_burst_clusters` to queries.py**
 
-Add after `get_recently_sent_clusters` (around line ~490):
+Add after `get_recently_sent_clusters`:
 
 ```python
 def get_recent_burst_clusters(
@@ -353,24 +297,26 @@ def get_recent_burst_clusters(
     ).fetchall()
 ```
 
+Note: `timedelta(minutes=within_minutes)` — `timedelta` already supports `minutes` keyword.
+
 - [ ] **Step 2: Add constants to orchestrator.py**
 
-After the existing `DUP_GUARD_COSINE_THRESHOLD` and `DUP_GUARD_HOURS` constants, add:
+After the existing `DUP_GUARD_COSINE_THRESHOLD` and `DUP_GUARD_HOURS` lines, add:
 
 ```python
 BURST_GUARD_MINUTES = 30   # short window for same-event burst suppression
-BURST_GUARD_COSINE  = 0.50 # softer threshold than DUP_GUARD for burst detection
+BURST_GUARD_COSINE  = 0.50 # softer threshold than DUP_GUARD — valid because short window
 ```
 
 - [ ] **Step 3: Wire burst guard into orchestrator step 6b**
 
-In `_run()`, inside `if cluster["status"] == "new":`, add the burst guard block **before** the existing `sent_clusters = queries.get_recently_sent_clusters(...)` call:
+In `_run()`, inside `if cluster["status"] == "new":`, **before** the line `sent_clusters = queries.get_recently_sent_clusters(...)`, insert:
 
 ```python
-        # ── burst guard: suppress near-duplicate clusters in 30-minute window ──
-        # Catches same-event articles from different sources (e.g. 6 CB rate news
-        # in 20 minutes). Softer cosine threshold (0.50) than the 12h dup guard
-        # (0.75) — valid because the short window makes false positives unlikely.
+        # ── burst guard: suppress same-event clusters in 30-minute window ─────
+        # Catches different-source articles about the same event (e.g. 6 CB rate
+        # news in 20 minutes). Softer cosine threshold (0.50) than the 12h guard
+        # (0.75) — acceptable because the 30-min window keeps false-positive risk low.
         burst_clusters = queries.get_recent_burst_clusters(
             db, within_minutes=BURST_GUARD_MINUTES, exclude_cluster_id=cluster["id"]
         )
@@ -407,7 +353,7 @@ In `_run()`, inside `if cluster["status"] == "new":`, add the burst guard block 
                     )
 ```
 
-Also add `BURST_GUARD_MINUTES` and `BURST_GUARD_COSINE` to the import of constants at the top of the file (they're defined in the same file, so no import needed — just make sure they appear before `_run`).
+Ensure `cluster_emb = cluster["embedding"]` and `cluster_tokens = cluster["title_tokens"]` are already available at this point (they are — `cluster` is loaded from DB at step 5).
 
 - [ ] **Step 4: Write the failing tests**
 
@@ -418,16 +364,18 @@ Create `backend/tests/test_burst_guard.py`:
 Tests for the 30-minute burst guard in the orchestrator.
 
 The burst guard silences a new cluster when a semantically similar cluster
-(cosine >= 0.50, or jaccard >= JACCARD_THRESHOLD for the fallback path)
-was published within BURST_GUARD_MINUTES.
+was published within BURST_GUARD_MINUTES. Similarity is measured by cosine
+(embedding path) or jaccard (fallback, no embeddings).
 
 Covers:
-- Burst guard silences same-event cluster published within 30 min
-- Burst guard does NOT silence cluster published > 30 min ago
-- Burst guard does NOT silence cluster below cosine threshold
-- Burst guard uses jaccard fallback when embeddings are absent
+- get_recent_burst_clusters returns rows within window
+- get_recent_burst_clusters returns empty list outside window
+- get_recent_burst_clusters excludes the specified cluster_id
+- Orchestrator silences a new cluster when burst guard query returns a similar cluster
+- Orchestrator does NOT silence when burst guard query returns nothing
 """
 
+import struct
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch, AsyncMock
 
@@ -435,7 +383,6 @@ import pytest
 
 from app.db import queries
 from app.pipeline.orchestrator import process, Outcome, BURST_GUARD_MINUTES
-from app.pipeline.dedup import JACCARD_THRESHOLD
 from tests.conftest import make_article, db  # noqa: F401
 
 
@@ -447,15 +394,19 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _insert_published_cluster_with_send(
-    db,
-    *,
-    title: str,
-    title_tokens: str,
-    minutes_ago: int,
-    embedding: bytes | None = None,
-) -> int:
-    """Insert a published cluster and a matching telegram_sends row."""
+def _unit_vec_bytes() -> bytes:
+    """Return a 384-dim unit vector as packed float32 bytes (cosine with itself = 1.0)."""
+    vec = [1.0] + [0.0] * 383
+    return struct.pack(f"{len(vec)}f", *vec)
+
+
+def _orthogonal_vec_bytes() -> bytes:
+    """Return a 384-dim unit vector orthogonal to _unit_vec_bytes (cosine = 0.0)."""
+    vec = [0.0] + [1.0] + [0.0] * 382
+    return struct.pack(f"{len(vec)}f", *vec)
+
+
+def _insert_cluster_with_send(db, *, title: str, title_tokens: str, minutes_ago: int, embedding: bytes | None = None) -> int:
     sent_at = _iso(_utcnow() - timedelta(minutes=minutes_ago))
     row = db.execute(
         """
@@ -480,92 +431,99 @@ def _insert_published_cluster_with_send(
     return cluster_id
 
 
-class TestBurstGuardJaccardFallback:
-    """Tests using token overlap (jaccard) when embeddings are absent."""
+# ── query unit tests ──────────────────────────────────────────────────────────
 
-    def test_silences_overlapping_cluster_within_window(self, db):
-        """
-        A cluster with token overlap >= JACCARD_THRESHOLD published 10 min ago
-        causes the new cluster to be silenced by the burst guard.
-        """
-        # Published 10 min ago: overlapping tokens with new article
-        _insert_published_cluster_with_send(
-            db,
-            title="Банк России снизил ставку до четырнадцати процентов",
-            title_tokens="банк до процент россия снизить ставка четырнадцать",
+class TestGetRecentBurstClusters:
+    def test_returns_row_within_window(self, db):
+        _insert_cluster_with_send(
+            db, title="ЦБ снизил ставку", title_tokens="снизить ставка цб",
             minutes_ago=10,
-            embedding=None,  # force jaccard fallback
         )
+        rows = queries.get_recent_burst_clusters(db, within_minutes=30, exclude_cluster_id=0)
+        assert len(rows) == 1
+        assert rows[0]["title_tokens"] == "снизить ставка цб"
 
-        # New article about the same event, different wording
-        article = make_article(
-            title="ЦБ снизил ключевую ставку до четырнадцати процентов впервые за год"
+    def test_excludes_row_outside_window(self, db):
+        _insert_cluster_with_send(
+            db, title="ЦБ снизил ставку", title_tokens="снизить ставка цб",
+            minutes_ago=BURST_GUARD_MINUTES + 10,  # 40 min ago
         )
-        with patch("app.telegram.client.send", new_callable=AsyncMock, return_value=42):
-            result = await_or_run(process(db, article))
+        rows = queries.get_recent_burst_clusters(db, within_minutes=BURST_GUARD_MINUTES, exclude_cluster_id=0)
+        assert rows == []
+
+    def test_excludes_specified_cluster_id(self, db):
+        cluster_id = _insert_cluster_with_send(
+            db, title="ЦБ снизил ставку", title_tokens="снизить ставка цб",
+            minutes_ago=5,
+        )
+        rows = queries.get_recent_burst_clusters(
+            db, within_minutes=BURST_GUARD_MINUTES, exclude_cluster_id=cluster_id
+        )
+        assert rows == []
+
+
+# ── orchestrator integration tests ───────────────────────────────────────────
+
+@pytest.mark.asyncio
+class TestBurstGuardOrchestrator:
+    async def test_silenced_when_similar_cluster_in_burst_window(self, db):
+        """
+        When get_recent_burst_clusters returns a cluster with cosine = 1.0
+        (identical embeddings), the new cluster must be silenced.
+        """
+        emb = _unit_vec_bytes()
+        fake_burst_row = {"title_tokens": "снизить ставка цб", "embedding": emb}
+
+        article = make_article(title="ЦБ снизил ключевую ставку до рекордного минимума")
+
+        with patch("app.pipeline.orchestrator.queries.get_recent_burst_clusters", return_value=[fake_burst_row]), \
+             patch("app.ai.embedder.embed", return_value=emb), \
+             patch("app.telegram.client.send", new_callable=AsyncMock, return_value=42):
+            result = await process(db, article)
 
         assert result.outcome == Outcome.SILENCE
 
-    def test_does_not_silence_cluster_outside_window(self, db):
+    async def test_not_silenced_when_burst_guard_returns_empty(self, db):
         """
-        The same overlapping cluster published 40 min ago (> BURST_GUARD_MINUTES=30)
-        must NOT trigger the burst guard.
+        When get_recent_burst_clusters returns nothing, the burst guard must not fire.
+        The article proceeds normally and is published.
         """
-        _insert_published_cluster_with_send(
-            db,
-            title="Банк России снизил ставку до четырнадцати процентов",
-            title_tokens="банк до процент россия снизить ставка четырнадцать",
-            minutes_ago=BURST_GUARD_MINUTES + 10,  # 40 min ago — outside window
-            embedding=None,
-        )
+        emb = _unit_vec_bytes()
+        article = make_article(title="ЦБ снизил ключевую ставку до рекордного минимума")
 
-        article = make_article(
-            title="ЦБ снизил ключевую ставку до четырнадцати процентов впервые за год"
-        )
-        with patch("app.telegram.client.send", new_callable=AsyncMock, return_value=42):
-            result = await_or_run(process(db, article))
+        with patch("app.pipeline.orchestrator.queries.get_recent_burst_clusters", return_value=[]), \
+             patch("app.ai.embedder.embed", return_value=emb), \
+             patch("app.telegram.client.send", new_callable=AsyncMock, return_value=42):
+            result = await process(db, article)
 
-        # Should NOT be silenced by burst guard (may be silenced by relevance/score, that's ok)
-        assert result.outcome != Outcome.SILENCE or result.outcome == Outcome.SILENCE  # not burst
+        assert result.outcome in (Outcome.SENT_NEW, Outcome.SENT_UPDATE)
 
-    def test_does_not_silence_unrelated_cluster(self, db):
+    async def test_not_silenced_when_cosine_below_threshold(self, db):
         """
-        A published cluster with no token overlap must not suppress unrelated news.
+        When the burst cluster has cosine = 0.0 (orthogonal embedding),
+        the burst guard must not fire.
         """
-        _insert_published_cluster_with_send(
-            db,
-            title="Лукойл выплатит дивиденды акционерам",
-            title_tokens="акционер выплатить дивиденд лукойл",
-            minutes_ago=5,
-            embedding=None,
-        )
+        emb_article = _unit_vec_bytes()
+        emb_burst   = _orthogonal_vec_bytes()  # cosine(unit, orthogonal) = 0.0
+        fake_burst_row = {"title_tokens": "лукойл дивиденд выплата", "embedding": emb_burst}
 
-        article = make_article(title="Сбербанк объявил об увеличении прибыли в первом квартале")
-        with patch("app.telegram.client.send", new_callable=AsyncMock, return_value=42):
-            result = await_or_run(process(db, article))
+        article = make_article(title="ЦБ снизил ключевую ставку до рекордного минимума")
 
-        assert result.outcome in (Outcome.SENT_NEW, Outcome.SENT_UPDATE, Outcome.SILENCE)
-        # If silenced, it must not be because of burst guard — log will show "burst_guard" event.
-        # We can't easily assert the reason here, but the outcome is acceptable either way.
+        with patch("app.pipeline.orchestrator.queries.get_recent_burst_clusters", return_value=[fake_burst_row]), \
+             patch("app.ai.embedder.embed", return_value=emb_article), \
+             patch("app.telegram.client.send", new_callable=AsyncMock, return_value=42):
+            result = await process(db, article)
 
-
-# ── async helper ─────────────────────────────────────────────────────────────
-
-import asyncio
-
-
-def await_or_run(coro):
-    """Run a coroutine from a sync test context."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+        assert result.outcome in (Outcome.SENT_NEW, Outcome.SENT_UPDATE)
 ```
 
-- [ ] **Step 5: Run tests to verify they fail appropriately**
+- [ ] **Step 5: Run tests to verify they fail**
 
 ```bash
 ssh root@213.108.1.38 'docker exec -e TEST_DATABASE_URL=postgresql://postgres:postgres@postgres/moex_assistant_test backend-backend-1 pytest tests/test_burst_guard.py -v'
 ```
 
-Expected: `test_silences_overlapping_cluster_within_window` fails (burst guard not yet implemented).
+Expected: `test_silenced_when_similar_cluster_in_burst_window` FAILS (burst guard not yet wired in).
 
 - [ ] **Step 6: Run full suite after implementation**
 
