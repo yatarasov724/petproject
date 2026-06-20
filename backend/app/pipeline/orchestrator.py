@@ -663,14 +663,8 @@ async def _ai_enrich(
                 )
                 ai_analysis = _dc_replace(ai_analysis, tickers=validated_list)
 
-        # Edit the channel message with AI-enriched content.
-        from app.telegram.formatter import format_message as _fmt
-        from app.telegram import client as _tg
-        enriched_text = _fmt(cluster, score_result, pub.decision, ai_analysis, correlations)
-        await _tg.edit_message(message_id, enriched_text)
-
-        # ai_analysis.tickers are already cross-validated above; notify_with_ai
-        # re-validates independently as defense-in-depth for the DM path.
+        # Send DMs first — subscribers get AI-enriched content before the channel edit.
+        # The channel already has a raw post; the enriched edit is delayed by subscriber_lead_seconds.
         if tickers_raw:
             from app.bot.portfolio import notify_with_ai
             await notify_with_ai(
@@ -679,6 +673,17 @@ async def _ai_enrich(
                 event_type=score_result.event_type.value,
                 score=score_result.score,
             )
+
+        # Wait before enriching the channel — gives subscribers a lead window.
+        lead = settings.subscriber_lead_seconds
+        if lead > 0 and tickers_raw:
+            await asyncio.sleep(lead)
+
+        # Edit the channel message with AI-enriched content.
+        from app.telegram.formatter import format_message as _fmt
+        from app.telegram import client as _tg
+        enriched_text = _fmt(cluster, score_result, pub.decision, ai_analysis, correlations)
+        await _tg.edit_message(message_id, enriched_text)
 
         logger.info(
             "AI enrich ok: cluster_id=%d",

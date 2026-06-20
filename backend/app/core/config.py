@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     # Bootstrap-only: used once to seed telegram_session.session, then ignored.
     telegram_session_string: str = ""
 
+    # ── subscriber early access ──────────────────────────────────────────────
+    # How many seconds DMs go out before the channel post is AI-enriched.
+    # Set to 0 to disable the lead window.
+    subscriber_lead_seconds: int = 60
+
     # ── legacy / unused ───────────────────────────────────────────────────────
     groq_api_key: str = ""
 
