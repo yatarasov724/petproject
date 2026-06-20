@@ -5,9 +5,9 @@ Message format with AI analysis (MarkdownV2):
 ─────────────────────────────────────────────
   🟢 *ЦБ сохранил ставку на уровне 21%*
 
-  Контекст: _Рынок ждал снижения, но ЦБ не увидел оснований. Давление на банки сохраняется._
+  _Рынок ждал снижения, но ЦБ не увидел оснований. Давление на банки сохраняется._
 
-  Следим за: _Следующее заседание ЦБ — 25 июля._
+  _Следующее заседание ЦБ — 25 июля._
 
   $SBER $VTBR
 
@@ -44,6 +44,17 @@ def _depth(score: int) -> str:
     return "compact"
 
 
+_EVENT_EMOJI: dict = {
+    EventType.DIVIDENDS:      "💰",
+    EventType.EARNINGS:       "📊",
+    EventType.RATE_DECISION:  "🏦",
+    EventType.SANCTIONS:      "⚠️",
+    EventType.WAR_ESCALATION: "⚠️",
+    EventType.IPO:            "🏢",
+    EventType.M_AND_A:        "🏢",
+    EventType.SPO_BUYBACK:    "🏢",
+}
+
 
 def format_message(
     cluster: Any,
@@ -54,6 +65,8 @@ def format_message(
 ) -> str:
     """Telegram channel message in MarkdownV2."""
     is_update = decision == Decision.UPDATE
+    depth = _depth(score_result.score)
+    etype = score_result.event_type
 
     if ai_analysis and ai_analysis.tickers:
         ticker_line = " ".join(f"\\${t}" for t in ai_analysis.tickers)
@@ -61,26 +74,51 @@ def format_message(
         ticker_line = _format_tickers_compact(cluster["tickers"])
 
     if ai_analysis:
-        if is_update:
-            prefix = "🔄 "
-        elif ai_analysis.sentiment == "positive":
+        return _format_with_ai(ai_analysis, etype, is_update, depth, ticker_line, correlations)
+    else:
+        return _format_fallback(cluster, is_update, ticker_line)
+
+
+def _format_with_ai(
+    ai: AIAnalysis,
+    etype: EventType,
+    is_update: bool,
+    depth: str,
+    ticker_line: str,
+    correlations: Optional[list],
+) -> str:
+    if is_update:
+        prefix = "🔄 "
+    else:
+        base_emoji = _EVENT_EMOJI.get(etype)
+        if base_emoji:
+            prefix = f"{base_emoji} "
+        elif ai.sentiment == "positive":
             prefix = "🟢 "
-        elif ai_analysis.sentiment == "negative":
+        elif ai.sentiment == "negative":
             prefix = "🔴 "
         else:
             prefix = ""
-        parts = [f"{prefix}*{_esc(ai_analysis.summary)}*"]
-        if ai_analysis.what_behind:
-            parts += ["", f"Контекст: _{_esc(ai_analysis.what_behind)}_"]
-        if ai_analysis.watch_for:
-            parts += ["", f"Следим за: _{_esc(ai_analysis.watch_for)}_"]
-    else:
-        emoji = "🔄" if is_update else ""
-        parts = [f"{(emoji + ' ') if emoji else ''}*{_esc(cluster['canonical_title'])}*"]
+
+    parts = [f"{prefix}*{_esc(ai.summary)}*"]
+
+    if depth in ("full", "medium") and ai.what_behind:
+        parts += ["", f"_{_esc(ai.what_behind)}_"]
+
+    if depth == "full" and ai.watch_for:
+        parts += ["", f"_{_esc(ai.watch_for)}_"]
 
     if ticker_line:
         parts += ["", ticker_line]
 
+    return "\n".join(parts)
+
+
+def _format_fallback(cluster: Any, is_update: bool, ticker_line: str) -> str:
+    emoji = "🔄" if is_update else "📰"
+    parts = [f"{emoji} *{_esc(cluster['canonical_title'])}*"]
+    if ticker_line:
+        parts += ["", ticker_line]
     return "\n".join(parts)
 
 
