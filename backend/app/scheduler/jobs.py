@@ -21,13 +21,14 @@ from zoneinfo import ZoneInfo
 
 from app.core import metrics
 import app.core.tg_client as _tg_client
-from app.core.alerting import send_ops as _send_ops
+from app.core.alerting import send_ops as _send_ops, send_ops_pinned as _send_ops_pinned
 from app.db.database import get_db
 from app.db import queries
 from app.bot import commands as bot_commands
 from app.calendar.moex_client import MoexIssClient
 from app.calendar.notify import send_calendar_notify
 from app.db.queries import _from_json
+from app.ai.filter import VALID_TICKERS as _BOT_TICKERS
 from app.pipeline.fetcher import fetch_all
 from app.pipeline.tg_fetcher import fetch_all_tg
 from app.pipeline.orchestrator import process
@@ -603,6 +604,7 @@ async def moex_instruments_sync_job() -> None:
         db = get_db()
         try:
             count = queries.upsert_moex_instruments(db, instruments)
+            moex_tickers = queries.get_moex_tickers(db)
         finally:
             db.close()
         logger.info(
@@ -610,5 +612,20 @@ async def moex_instruments_sync_job() -> None:
             count,
             extra={"event": "moex_instruments_synced", "count": count},
         )
+
+        # Alert if any bot ticker disappeared from MOEX TQBR board
+        delisted = sorted(_BOT_TICKERS - moex_tickers)
+        if delisted:
+            tickers_str = ", ".join(delisted)
+            logger.warning(
+                "moex_instruments_sync: %d bot ticker(s) missing from TQBR: %s",
+                len(delisted), tickers_str,
+                extra={"event": "delisted_tickers_detected", "tickers": tickers_str},
+            )
+            await _send_ops_pinned(
+                f"⚠️ Делистинг: {len(delisted)} тикер(а) исчезли с TQBR\n"
+                f"{tickers_str}\n"
+                f"Проверь filter.py — возможно нужно обновить или удалить."
+            )
     except Exception:
         logger.exception("moex_instruments_sync_job crashed")
