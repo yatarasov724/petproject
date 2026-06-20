@@ -45,6 +45,7 @@ from app.pipeline.normalizer import RawArticle
 from app.pipeline.price_history import capture_price_snapshot, get_correlations
 from app.pipeline.publish_decision import decide, Decision, PublishDecision, COOLDOWN_HOURS
 from app.pipeline.relevance import is_russia_relevant
+from app.pipeline.source_tiers import get_tier, TIER_1_SOURCES
 from app.pipeline.ticker_validator import validate_tickers
 from app.telegram import client as tg
 
@@ -60,6 +61,9 @@ DUP_GUARD_HOURS = 12  # window for cross-cluster duplicate guard
 
 BURST_GUARD_MINUTES = 30   # short window for same-event burst suppression
 BURST_GUARD_COSINE  = 0.50 # softer threshold than DUP_GUARD — valid because short window
+
+SOURCE_AUTH_MINUTES = 60   # window for tier-2 source suppression
+SOURCE_AUTH_COSINE  = 0.70 # stricter than burst guard — longer window
 
 SPEAKER_SATURATION_LIMIT = 2   # max posts from same speaker before silencing
 SPEAKER_SATURATION_HOURS = 8   # lookback window for speaker saturation check
@@ -310,6 +314,60 @@ async def _run(db: DBConnection, article: RawArticle) -> ArticleResult:
                         Outcome.SILENCE, article.source_name, short,
                         score=score_result.score, cluster_id=cluster["id"],
                     )
+
+        # ── source authority guard: suppress tier-2 if tier-1 published same story ──
+        # Extends the burst guard window (30 min → 60 min) for non-tier-1 sources.
+        # Tier-1 sources publish freely; tier-2/3 are suppressed when a tier-1 cluster
+        # with high similarity was sent in the last SOURCE_AUTH_MINUTES minutes.
+        if get_tier(article.source_name) == 2:
+            tier1_clusters = queries.get_recent_tier1_clusters(
+                db,
+                within_minutes=SOURCE_AUTH_MINUTES,
+                exclude_cluster_id=cluster["id"],
+                tier1_sources=TIER_1_SOURCES,
+            )
+            cluster_emb_sa = cluster["embedding"]
+            cluster_tok_sa = cluster["title_tokens"]
+            for row in tier1_clusters:
+                t1_emb = row["embedding"]
+                if cluster_emb_sa is not None and t1_emb is not None:
+                    cos = embedder.cosine(cluster_emb_sa, t1_emb)
+                    if cos >= SOURCE_AUTH_COSINE:
+                        metrics.inc(metrics.EVENTS_SILENCED)
+                        logger.info(
+                            "source auth guard: cluster #%d silenced "
+                            "(cosine=%.2f, source=%s)",
+                            cluster["id"], cos, article.source_name,
+                            extra={
+                                "event":       "source_auth_guard",
+                                "cluster_id":  cluster["id"],
+                                "cosine":      cos,
+                                "source":      article.source_name,
+                            },
+                        )
+                        return ArticleResult(
+                            Outcome.SILENCE, article.source_name, short,
+                            score=score_result.score, cluster_id=cluster["id"],
+                        )
+                else:
+                    j = dedup.jaccard(cluster_tok_sa, row["title_tokens"] or "")
+                    if j >= dedup.JACCARD_THRESHOLD:
+                        metrics.inc(metrics.EVENTS_SILENCED)
+                        logger.info(
+                            "source auth guard: cluster #%d silenced "
+                            "(jaccard=%.2f, source=%s)",
+                            cluster["id"], j, article.source_name,
+                            extra={
+                                "event":      "source_auth_guard_jaccard",
+                                "cluster_id": cluster["id"],
+                                "jaccard":    j,
+                                "source":     article.source_name,
+                            },
+                        )
+                        return ArticleResult(
+                            Outcome.SILENCE, article.source_name, short,
+                            score=score_result.score, cluster_id=cluster["id"],
+                        )
 
         sent_clusters = queries.get_recently_sent_clusters(
             db, within_hours=DUP_GUARD_HOURS, exclude_cluster_id=cluster["id"]

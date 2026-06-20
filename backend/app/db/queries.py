@@ -1622,3 +1622,35 @@ def get_escaped_duplicates_24h(db: DBConnection) -> int:
             if jaccard(row_a["title_tokens"] or "", row_b["title_tokens"] or "") >= JACCARD_THRESHOLD:
                 count += 1
     return count
+
+
+def get_recent_tier1_clusters(
+    db: DBConnection,
+    within_minutes: int,
+    exclude_cluster_id: int,
+    tier1_sources: frozenset,
+) -> list:
+    """
+    Return (title_tokens, embedding) for clusters that:
+    - had a successful send in the last `within_minutes` minutes
+    - have at least one seen_article from a tier-1 source
+    - are not `exclude_cluster_id`
+
+    Used by the source authority guard in the orchestrator to suppress
+    tier-2 articles when a tier-1 source already published the same story.
+    """
+    cutoff = _iso(datetime.now(timezone.utc) - timedelta(minutes=within_minutes))
+    return db.execute(
+        """
+        SELECT DISTINCT ec.title_tokens, ec.embedding
+        FROM   telegram_sends ts
+        JOIN   event_clusters ec  ON ts.cluster_id = ec.id
+        JOIN   seen_articles  sa  ON sa.cluster_id = ec.id
+        JOIN   rss_sources    rs  ON rs.id = sa.source_id
+        WHERE  ts.sent_at >= %s
+          AND  ts.ok = 1
+          AND  ts.cluster_id != %s
+          AND  rs.name = ANY(%s)
+        """,
+        (cutoff, exclude_cluster_id, list(tier1_sources)),
+    ).fetchall()
