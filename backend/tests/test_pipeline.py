@@ -165,7 +165,7 @@ class TestCrossSourceUpdate:
             score=30,
         )
         # Simulate: cluster was previously published, cooldown expired, 3 sources confirmed
-        queries.mark_cluster_sent(db, cluster_id, "NEW_EVENT", score=30, cooldown_hours=0)
+        queries.mark_cluster_sent(db, cluster_id, "NEW_EVENT", score=30, source_count=1, cooldown_hours=0)
         db.execute(
             "UPDATE event_clusters SET source_count = %s, cooldown_until = NULL WHERE id = %s",
             (UPDATE_SOURCE_FLOOR, cluster_id),
@@ -197,7 +197,7 @@ class TestCooldown:
         cluster_id = db.execute(
             "SELECT id FROM event_clusters ORDER BY id LIMIT 1"
         ).fetchone()["id"]
-        queries.mark_cluster_sent(db, cluster_id, "NEW_EVENT", score=30, cooldown_hours=2)
+        queries.mark_cluster_sent(db, cluster_id, "NEW_EVENT", score=30, source_count=1, cooldown_hours=2)
 
         # Second source — but cooldown still active
         a2 = make_article(
@@ -524,7 +524,7 @@ class TestDupGuardQueries:
             keywords=tokens, score=50,
         )
         if sent:
-            queries.mark_cluster_sent(db, cid, "NEW_EVENT", score=50)
+            queries.mark_cluster_sent(db, cid, "NEW_EVENT", score=50, source_count=1)
             queries.log_send(
                 db, cluster_id=cid, decision="NEW_EVENT", score=50,
                 source_count=1, headline=title,
@@ -650,7 +650,7 @@ class TestDupGuard:
         cluster_a = queries.create_cluster(
             db, canonical_title=title_a, title_tokens=tokens_a, keywords=tokens_a, score=50,
         )
-        queries.mark_cluster_sent(db, cluster_a, "NEW_EVENT", score=50)
+        queries.mark_cluster_sent(db, cluster_a, "NEW_EVENT", score=50, source_count=1)
         queries.log_send(
             db, cluster_id=cluster_a, decision="NEW_EVENT", score=50,
             source_count=1, headline=title_a, tg_message_id=99, ok=True,
