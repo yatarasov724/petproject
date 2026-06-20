@@ -484,10 +484,9 @@ async def _run(db: DBConnection, article: RawArticle) -> ArticleResult:
             score=score_result.score, cluster_id=cluster["id"],
         )
 
-    # ── step 8: send immediately, enrich with AI in background ──────────────
-    # Fire-and-forget: publish base message without waiting for AI (~0ms delay),
-    # then _ai_enrich() edits the message in place once the LLM responds.
-    # Filtering is handled by scorer + is_russia_relevant; AI is now decorative.
+    # ── step 8: mark as sent, enrich with AI in background ─────────────────
+    # No raw post — channel only gets the AI-enriched version after _ai_enrich().
+    # DRY_RUN: tg.send() handles DB marking and logging without a real HTTP call.
     # Валидация тикеров: убираем те, чьи ключевые слова отсутствуют в заголовке.
     # Это предотвращает публикацию тикеров, попавших в кластер через загрязнение.
     safe_tickers = validate_tickers(cluster["tickers"], cluster["canonical_title"])
@@ -502,21 +501,27 @@ async def _run(db: DBConnection, article: RawArticle) -> ArticleResult:
             cluster["id"], score_result.event_type.value, len(correlations),
             extra={"event": "correlations_attached", "cluster_id": cluster["id"]},
         )
-    msg_id = await tg.send(
-        db=db,
-        cluster=cluster,
-        score_result=score_result,
-        pub_decision=pub,
-        ai_analysis=None,
-        correlations=correlations,
-    )
-    ok = msg_id is not None
+    if settings.dry_run:
+        msg_id = await tg.send(
+            db=db, cluster=cluster, score_result=score_result, pub_decision=pub,
+            ai_analysis=None, correlations=correlations,
+        )
+        ok = msg_id is not None
+    else:
+        queries.mark_cluster_sent(
+            db,
+            cluster_id=pub.cluster_id,
+            decision=pub.decision.value,
+            score=score_result.score,
+            source_count=cluster["source_count"],
+        )
+        ok = True
 
     if ok:
         counter = metrics.EVENTS_PUBLISHED if pub.decision == Decision.NEW_EVENT else metrics.EVENTS_UPDATED
         metrics.inc(counter)
         logger.info(
-            "event published",
+            "event queued for ai enrich",
             extra={
                 "event":      "event_published",
                 "decision":   pub.decision.value,
@@ -529,13 +534,20 @@ async def _run(db: DBConnection, article: RawArticle) -> ArticleResult:
             },
         )
         tickers_raw = cluster["tickers"] or ""
-        if msg_id and settings.openrouter_api_key:
+        if settings.openrouter_api_key:
             asyncio.create_task(
                 _ai_enrich(
-                    article.title, article.content, cluster, score_result, pub, msg_id,
+                    article.title, article.content, cluster, score_result, pub,
                     correlations, tickers_raw=tickers_raw,
                     canonical_title=cluster["canonical_title"],
                 )
+            )
+        elif not settings.dry_run:
+            # AI not configured — send raw post directly (no enrichment, no delay).
+            from app.telegram.formatter import format_message as _fmt_raw
+            from app.telegram import client as _tg_raw
+            asyncio.create_task(
+                _tg_raw.send_text(_fmt_raw(cluster, score_result, pub.decision, None, correlations))
             )
         asyncio.create_task(
             _detect_unknown_company(cluster["canonical_title"], bool(cluster["tickers"]))
@@ -604,14 +616,13 @@ async def _ai_enrich(
     cluster: Any,
     score_result: scorer.ScoreResult,
     pub: PublishDecision,
-    message_id: int,
     correlations: list | None = None,
     *,
     tickers_raw: str = "",
     canonical_title: str = "",
 ) -> None:
     """
-    Background task: call AI, then edit the already-sent Telegram message.
+    Background task: call AI, send DMs, then send enriched post to channel.
     Runs concurrently with the next poll cycle — never blocks article processing.
     """
     try:
@@ -637,13 +648,15 @@ async def _ai_enrich(
 
         ai_analysis = await analyzer.analyze(title, content, recent_context=recent_context)
         if ai_analysis is None:
-            # AI failed — delete the raw message so unedited posts don't appear in the channel.
+            # AI failed — send minimal fallback so cluster doesn't silently disappear from channel.
+            from app.telegram.formatter import format_message as _fmt
             from app.telegram import client as _tg
-            await _tg.delete_message(message_id)
+            fallback_text = _fmt(cluster, score_result, pub.decision, None, correlations)
+            await _tg.send_text(fallback_text)
             logger.warning(
-                "AI enrich failed, deleting raw message: cluster_id=%d message_id=%d",
-                cluster["id"], message_id,
-                extra={"event": "ai_enrich_deleted", "cluster_id": cluster["id"]},
+                "AI enrich failed, sent fallback: cluster_id=%d",
+                cluster["id"],
+                extra={"event": "ai_enrich_fallback", "cluster_id": cluster["id"]},
             )
             return
 
@@ -663,8 +676,7 @@ async def _ai_enrich(
                 )
                 ai_analysis = _dc_replace(ai_analysis, tickers=validated_list)
 
-        # Send DMs first — subscribers get AI-enriched content before the channel edit.
-        # The channel already has a raw post; the enriched edit is delayed by subscriber_lead_seconds.
+        # Send DMs first — subscribers get AI-enriched content before the channel post goes live.
         if tickers_raw:
             from app.bot.portfolio import notify_with_ai
             await notify_with_ai(
@@ -679,11 +691,11 @@ async def _ai_enrich(
         if lead > 0 and tickers_raw:
             await asyncio.sleep(lead)
 
-        # Edit the channel message with AI-enriched content.
+        # Send AI-enriched post to channel.
         from app.telegram.formatter import format_message as _fmt
         from app.telegram import client as _tg
         enriched_text = _fmt(cluster, score_result, pub.decision, ai_analysis, correlations)
-        await _tg.edit_message(message_id, enriched_text)
+        await _tg.send_text(enriched_text)
 
         logger.info(
             "AI enrich ok: cluster_id=%d",
