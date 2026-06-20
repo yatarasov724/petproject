@@ -61,6 +61,7 @@ def _make_score(score: int, event_type: EventType = EventType.CORPORATE) -> Scor
         keyword_bonus=0,
         source_bonus=0,
         type_bonus=0,
+        matched_keywords=[],
     )
 
 
@@ -214,10 +215,8 @@ class TestFormatMessageScoreDepth:
         assert "конец июля" in result  # watch_for content
 
     def test_medium_score_excludes_watch_for(self):
-        cluster = _make_score(35, EventType.CORPORATE)
         ai = _make_ai()
-        cluster_dict = _make_cluster()
-        result = format_message(cluster_dict, _make_score(35), Decision.NEW, ai)
+        result = format_message(_make_cluster(), _make_score(35), Decision.NEW, ai)
         assert "конец июля" not in result  # watch_for omitted
 
     def test_compact_score_excludes_what_behind(self):
