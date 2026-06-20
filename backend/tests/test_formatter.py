@@ -127,3 +127,21 @@ class TestFormatMessageScoreDepth:
         ai = _make_ai()
         result = format_message(cluster, sr, Decision.NEW_EVENT, ai)
         assert "Сбербанк повысил прогноз" in result
+
+
+
+class TestAnalyzerPrompt:
+    """Smoke tests that _SYSTEM_PROMPT contains required guardrails."""
+
+    def test_noise_filter_present(self):
+        from app.ai.analyzer import _SYSTEM_PROMPT
+        assert "ФИЛЬТР ШУМА" in _SYSTEM_PROMPT
+
+    def test_forbidden_tickers_warning_present(self):
+        from app.ai.analyzer import _SYSTEM_PROMPT
+        assert "ЗАПРЕЩЁННЫЕ ОШИБКИ" in _SYSTEM_PROMPT
+
+    def test_json_format_instruction_present(self):
+        from app.ai.analyzer import _SYSTEM_PROMPT
+        assert '"summary"' in _SYSTEM_PROMPT
+        assert '"watch_for"' in _SYSTEM_PROMPT
