@@ -55,6 +55,13 @@ async def notify(tickers_raw: str, canonical_title: str, cluster_id: int, score:
 
     for user in users:
         user_id = user["user_id"]
+        if score is not None and score < user["min_score"]:
+            logger.debug(
+                "portfolio notify: score %d < min_score %d, skipping DM to user_id=%d",
+                score, user["min_score"], user_id,
+                extra={"event": "portfolio_score_skip", "user_id": user_id, "cluster_id": cluster_id},
+            )
+            continue
         if queries.is_quiet_hour(user["quiet_from"], user["quiet_to"], now_hour, user["utc_offset"]):
             logger.debug(
                 "portfolio notify: quiet hours, skipping DM to user_id=%d", user_id,
@@ -88,6 +95,7 @@ async def notify_with_ai(
     canonical_title: str = "",
     correlations:    list | None = None,
     event_type:      str = "",
+    score:           int | None = None,
 ) -> None:
     """Send AI-enriched DM to all users subscribed to any ticker in this cluster."""
     tickers = [t.strip() for t in tickers_raw.split(",") if t.strip()]
@@ -111,11 +119,18 @@ async def notify_with_ai(
     else:
         dm_tickers = ai_analysis.tickers if ai_analysis.tickers else tickers
 
-    text = format_ticker_dm(canonical_title, dm_tickers, ai_analysis)
+    text = format_ticker_dm(canonical_title, dm_tickers, ai_analysis, score=score or 0)
     now_hour = datetime.now(timezone.utc).hour
 
     for user in users:
         user_id = user["user_id"]
+        if score is not None and score < user["min_score"]:
+            logger.debug(
+                "portfolio notify_with_ai: score %d < min_score %d, skipping DM to user_id=%d",
+                score, user["min_score"], user_id,
+                extra={"event": "portfolio_score_skip", "user_id": user_id, "cluster_id": cluster_id},
+            )
+            continue
         if queries.is_quiet_hour(user["quiet_from"], user["quiet_to"], now_hour, user["utc_offset"]):
             logger.debug(
                 "portfolio notify_with_ai: quiet hours, skipping DM to user_id=%d", user_id,

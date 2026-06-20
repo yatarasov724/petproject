@@ -151,15 +151,17 @@ def format_digest(
     return "\n".join(lines)
 
 
-def format_ticker_dm(canonical_title: str, tickers: list, ai_analysis: AIAnalysis) -> str:
+def format_ticker_dm(canonical_title: str, tickers: list, ai_analysis: AIAnalysis, score: int = 0) -> str:
     """
     Format an AI-enriched post as a MarkdownV2 Telegram DM for portfolio subscribers.
 
     canonical_title — raw title (used only as fallback if summary is empty)
     tickers         — list of MOEX tickers, e.g. ["SBER", "VTBR"]
     ai_analysis     — AIAnalysis instance
+    score           — importance score; controls depth (full/medium/compact)
     """
-    ticker_str = " ".join(f"\\${t}" for t in tickers)
+    depth = _depth(score)
+    ticker_str = " ".join(f"\${t}" for t in tickers)
     summary = ai_analysis.summary or canonical_title
 
     if ai_analysis.sentiment == "positive":
@@ -169,10 +171,10 @@ def format_ticker_dm(canonical_title: str, tickers: list, ai_analysis: AIAnalysi
     else:
         prefix = ""
     parts = [f"{prefix}*{_esc(summary)}*"]
-    if ai_analysis.what_behind:
-        parts += ["", f"Контекст: _{_esc(ai_analysis.what_behind)}_"]
-    if ai_analysis.watch_for:
-        parts += ["", f"Следим за: _{_esc(ai_analysis.watch_for)}_"]
+    if depth in ("full", "medium") and ai_analysis.what_behind:
+        parts += ["", f"_{_esc(ai_analysis.what_behind)}_"]
+    if depth == "full" and ai_analysis.watch_for:
+        parts += ["", f"_{_esc(ai_analysis.watch_for)}_"]
     if ticker_str:
         parts += ["", ticker_str]
 
