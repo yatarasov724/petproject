@@ -594,6 +594,30 @@ def get_recently_sent_clusters(
     ).fetchall()
 
 
+def get_recent_burst_clusters(
+    db: DBConnection,
+    within_minutes: int,
+    exclude_cluster_id: int,
+) -> list[Any]:
+    """
+    Return (title_tokens, embedding) for clusters with a successful send
+    in the last `within_minutes` minutes, excluding `exclude_cluster_id`.
+
+    Used by the burst guard in the orchestrator to silence near-duplicate
+    clusters published in a rapid burst (e.g. 6 CB rate articles in 20 min).
+    """
+    cutoff = _iso(datetime.now(timezone.utc) - timedelta(minutes=within_minutes))
+    return db.execute(
+        """
+        SELECT DISTINCT ec.title_tokens, ec.embedding
+        FROM   telegram_sends ts
+        JOIN   event_clusters ec ON ts.cluster_id = ec.id
+        WHERE  ts.sent_at >= %s AND ts.ok = 1 AND ts.cluster_id != %s
+        """,
+        (cutoff, exclude_cluster_id),
+    ).fetchall()
+
+
 def log_send(
     db: DBConnection,
     cluster_id: int,

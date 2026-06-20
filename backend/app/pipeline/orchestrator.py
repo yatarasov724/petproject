@@ -58,6 +58,9 @@ ARTICLE_MAX_AGE_HOURS = 24
 DUP_GUARD_COSINE_THRESHOLD = 0.75
 DUP_GUARD_HOURS = 12  # window for cross-cluster duplicate guard
 
+BURST_GUARD_MINUTES = 30   # short window for same-event burst suppression
+BURST_GUARD_COSINE  = 0.50 # softer threshold than DUP_GUARD — valid because short window
+
 SPEAKER_SATURATION_LIMIT = 2   # max posts from same speaker before silencing
 SPEAKER_SATURATION_HOURS = 8   # lookback window for speaker saturation check
 
@@ -266,6 +269,47 @@ async def _run(db: DBConnection, article: RawArticle) -> ArticleResult:
                 Outcome.SILENCE, article.source_name, short,
                 score=score_result.score, cluster_id=cluster["id"],
             )
+
+        # ── burst guard: suppress same-event clusters in 30-minute window ─────
+        # Catches different-source articles about the same event (e.g. 6 CB rate
+        # news in 20 minutes). Softer cosine threshold (0.50) than the 12h guard
+        # (0.75) — acceptable because the 30-min window keeps false-positive risk low.
+        burst_clusters = queries.get_recent_burst_clusters(
+            db, within_minutes=BURST_GUARD_MINUTES, exclude_cluster_id=cluster["id"]
+        )
+        for sent_row in burst_clusters:
+            sent_emb = sent_row["embedding"]
+            cluster_emb_bg = cluster["embedding"]
+            cluster_tokens_bg = cluster["title_tokens"]
+            if cluster_emb_bg is not None and sent_emb is not None:
+                cos = embedder.cosine(cluster_emb_bg, sent_emb)
+                if cos >= BURST_GUARD_COSINE:
+                    metrics.inc(metrics.EVENTS_SILENCED)
+                    logger.info(
+                        "burst guard: cluster #%d silenced (cosine=%.2f with recent cluster)",
+                        cluster["id"],
+                        cos,
+                        extra={"event": "burst_guard", "cluster_id": cluster["id"], "cosine": cos},
+                    )
+                    return ArticleResult(
+                        Outcome.SILENCE, article.source_name, short,
+                        score=score_result.score, cluster_id=cluster["id"],
+                    )
+            else:
+                sent_tokens = sent_row["title_tokens"]
+                j = dedup.jaccard(cluster_tokens_bg, sent_tokens)
+                if j >= dedup.JACCARD_THRESHOLD:
+                    metrics.inc(metrics.EVENTS_SILENCED)
+                    logger.info(
+                        "burst guard: cluster #%d silenced (jaccard=%.2f with recent cluster)",
+                        cluster["id"],
+                        j,
+                        extra={"event": "burst_guard_jaccard", "cluster_id": cluster["id"], "jaccard": j},
+                    )
+                    return ArticleResult(
+                        Outcome.SILENCE, article.source_name, short,
+                        score=score_result.score, cluster_id=cluster["id"],
+                    )
 
         sent_clusters = queries.get_recently_sent_clusters(
             db, within_hours=DUP_GUARD_HOURS, exclude_cluster_id=cluster["id"]
