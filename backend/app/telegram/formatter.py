@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from typing import Optional, TYPE_CHECKING
 
 from app.ai.analyzer import AIAnalysis
-from app.pipeline.scorer import EventType, ScoreResult
+from app.pipeline.scorer import ScoreResult
 from app.pipeline.publish_decision import Decision
 
 if TYPE_CHECKING:
@@ -44,18 +44,6 @@ def _depth(score: int) -> str:
     return "compact"
 
 
-_EVENT_EMOJI: dict = {
-    EventType.DIVIDENDS:      "💰",
-    EventType.EARNINGS:       "📊",
-    EventType.RATE_DECISION:  "🏦",
-    EventType.SANCTIONS:      "⚠️",
-    EventType.WAR_ESCALATION: "⚠️",
-    EventType.IPO:            "🏢",
-    EventType.M_AND_A:        "🏢",
-    EventType.SPO_BUYBACK:    "🏢",
-}
-
-
 def format_message(
     cluster: Any,
     score_result: ScoreResult,
@@ -66,22 +54,19 @@ def format_message(
     """Telegram channel message in MarkdownV2."""
     is_update = decision == Decision.UPDATE
     depth = _depth(score_result.score)
-    etype = score_result.event_type
-
     if ai_analysis and ai_analysis.tickers:
         ticker_line = " ".join(f"\\${t}" for t in ai_analysis.tickers)
     else:
         ticker_line = _format_tickers_compact(cluster["tickers"])
 
     if ai_analysis:
-        return _format_with_ai(ai_analysis, etype, is_update, depth, ticker_line, correlations)
+        return _format_with_ai(ai_analysis, is_update, depth, ticker_line, correlations)
     else:
         return _format_fallback(cluster, is_update, ticker_line)
 
 
 def _format_with_ai(
     ai: AIAnalysis,
-    etype: EventType,
     is_update: bool,
     depth: str,
     ticker_line: str,
@@ -89,16 +74,12 @@ def _format_with_ai(
 ) -> str:
     if is_update:
         prefix = "🔄 "
+    elif ai.sentiment == "positive":
+        prefix = "🟢 "
+    elif ai.sentiment == "negative":
+        prefix = "🔴 "
     else:
-        base_emoji = _EVENT_EMOJI.get(etype)
-        if base_emoji:
-            prefix = f"{base_emoji} "
-        elif ai.sentiment == "positive":
-            prefix = "🟢 "
-        elif ai.sentiment == "negative":
-            prefix = "🔴 "
-        else:
-            prefix = ""
+        prefix = ""
 
     parts = [f"{prefix}*{_esc(ai.summary)}*"]
 
