@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.core import logging_setup, metrics
 import app.core.tg_client as _tg_client
 from app.db.database import init_db, get_db
+from app.db import queries
 from app.db.queries import seed_sources
 from app.scheduler import runner
 from app.api.routes.admin import router as admin_router
@@ -126,13 +127,15 @@ def health():
             (cutoff,),
         ).fetchone()["n"]
 
+        dups_escaped = queries.get_escaped_duplicates_24h(db)
         return {
             "status": "ok",
             "rss_sources": {row["status"]: row["n"] for row in source_rows},
-            "clusters_24h": clusters_24h,
-            "sends_24h":    sends_24h,
-            "sends_ok_24h": sends_ok,
-            "counters":     metrics.snapshot(),
+            "clusters_24h":      clusters_24h,
+            "sends_24h":         sends_24h,
+            "sends_ok_24h":      sends_ok,
+            "dups_escaped_24h":  dups_escaped,
+            "counters":          metrics.snapshot(),
         }
     except Exception as exc:
         logger.error("health check db error: %s", exc)

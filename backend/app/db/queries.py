@@ -1584,3 +1584,41 @@ def get_moex_tickers(db: DBConnection) -> set[str]:
     """Return set of all ticker symbols from moex_instruments."""
     rows = db.execute("SELECT ticker FROM moex_instruments").fetchall()
     return {row["ticker"] for row in rows}
+
+
+def get_escaped_duplicates_24h(db: DBConnection) -> int:
+    """
+    Count pairs of distinct published clusters (last 24h) that were sent within
+    2 hours of each other and have Jaccard title similarity >= the dedup threshold.
+
+    These are events that slipped through dedup as two separate publications —
+    the "escaped duplicates" metric. Low send volume (~5-20/day) makes the
+    O(n^2) pairwise scan trivially fast.
+    """
+    from app.pipeline.dedup import jaccard, JACCARD_THRESHOLD
+
+    cutoff = _iso(datetime.now(timezone.utc) - timedelta(hours=24))
+    rows = db.execute(
+        """
+        SELECT ec.title_tokens, MIN(ts.sent_at) AS first_sent
+        FROM   telegram_sends ts
+        JOIN   event_clusters ec ON ts.cluster_id = ec.id
+        WHERE  ts.sent_at >= %s AND ts.ok = 1
+        GROUP  BY ec.id, ec.title_tokens
+        """,
+        (cutoff,),
+    ).fetchall()
+
+    count = 0
+    for i, row_a in enumerate(rows):
+        for row_b in rows[i + 1:]:
+            try:
+                t_a = datetime.fromisoformat(row_a["first_sent"].replace("Z", "+00:00"))
+                t_b = datetime.fromisoformat(row_b["first_sent"].replace("Z", "+00:00"))
+                if abs((t_a - t_b).total_seconds()) >= 7200:
+                    continue
+            except Exception:
+                continue
+            if jaccard(row_a["title_tokens"] or "", row_b["title_tokens"] or "") >= JACCARD_THRESHOLD:
+                count += 1
+    return count
