@@ -35,6 +35,16 @@ _MONTHS_RU = (
 )
 
 
+def _depth(score: int) -> str:
+    """Return format depth based on importance score."""
+    if score >= 50:
+        return "full"
+    if score >= 30:
+        return "medium"
+    return "compact"
+
+
+
 def format_message(
     cluster: Any,
     score_result: ScoreResult,
