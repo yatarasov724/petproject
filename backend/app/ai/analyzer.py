@@ -75,15 +75,15 @@ ENPG (Эн+), TRNFP (Транснефть), BANEP (Башнефть), RNFT (Ру
 NMTP (НМТП, Новороссийский морской торговый порт)
 
 Банки и финансы:
-SBER (Сбербанк, Сбер, Греф), VTBR (ВТБ), TCSG (Тинькофф, Т-Банк),
+SBER (Сбербанк, Сбер, Греф), VTBR (ВТБ), T (Тинькофф, Т-Банк, Т-Технологии),
 CBOM (МКБ, Московский кредитный банк), BSPB (Банк Санкт-Петербург),
 AFKS (АФК Система), SVCB (Совкомбанк), SPBE (СПБ Биржа), RENI (Ренессанс Страхование),
-MTSB (МТС-Банк — это БАНК, не оператор связи МТС!)
+MBNK (МТС-Банк — это БАНК, не оператор связи МТС!)
 
 Металлы и горная добыча:
 GMKN (Норникель, Потанин), CHMF (Северсталь, Мордашов), NLMK (НЛМК),
 MAGN (ММК, Магнитогорский), PLZL (Полюс, Полюс Золото), ALRS (Алроса),
-POLY (Полиметалл, Polymetal), MTLR (Мечел), SELG (Селигдар),
+MTLR (Мечел), SELG (Селигдар),
 RUAL (Русал, алюминий), RASP (Распадская, уголь)
 
 Электроэнергетика:
@@ -92,9 +92,9 @@ MSNG (Мосэнерго — НЕ путать с MSRS!), MSRS (Россети �
 MRKU (Россети Урал), MRKP (Россети Центр и Приволжье), MRKC (Россети Центр)
 
 IT и телеком:
-YNDX (Яндекс, Yandex), MTSS (МТС — оператор связи, НЕ МТС-Банк!), RTKM (Ростелеком),
+YDEX (Яндекс, Yandex), MTSS (МТС — оператор связи, НЕ МТС-Банк!), RTKM (Ростелеком),
 VKCO (ВКонтакте, VK), POSI (Позитив Текнолоджис),
-HHRU (Хедхантер, HeadHunter), OZON (Ozon-маркетплейс), DIAS (Диасофт)
+HEAD (Хедхантер, HeadHunter), OZON (Ozon-маркетплейс), DIAS (Диасофт)
 
 Транспорт:
 FLOT (Совкомфлот, танкеры), AFLT (Аэрофлот)
@@ -103,8 +103,8 @@ FLOT (Совкомфлот, танкеры), AFLT (Аэрофлот)
 AKRN (Акрон), PHOR (ФосАгро)
 
 Ритейл, агро, прочее:
-MGNT (Магнит), FIVE (X5, Пятёрочка, Перекрёсток), FIXP (Fix Price),
-AGRO (РусАгро), MOEX (Мосбиржа, Московская биржа),
+MGNT (Магнит), X5 (X5, Пятёрочка, Перекрёсток), FIXR (Fix Price),
+RAGR (РусАгро), MOEX (Мосбиржа, Московская биржа),
 SGZH (Сегежа), MGKL (МГКЛ, Мосгорломбард), OZPH (Озон Фармацевтика)
 
 Недвижимость:
@@ -123,7 +123,7 @@ SMLT (Самолёт), PIKK (ПИК), LSRG (ЛСР), ETLN (Эталон)
 
 КРИТИЧЕСКИ ВАЖНО — ЗАПРЕЩЁННЫЕ ОШИБКИ:
 ❌ МГКЛ → НЕ MTSS, НЕ FEES, НЕ AFLT. МГКЛ = MGKL (Мосгорломбард)
-❌ МТС-Банк → НЕ MTSS. МТС-Банк = MTSB
+❌ МТС-Банк → НЕ MTSS. МТС-Банк = MBNK
 ❌ Озон Фармацевтика → НЕ OZON. Озон Фармацевтика = OZPH
 ❌ AutoZone (американская компания, тикер AZO) → [] (не торгуется на MOEX)
 ❌ Иностранная компания (Goldman Sachs, Evercore, Apple, FalconX, Coinbase, Binance...) → []
@@ -142,6 +142,7 @@ SMLT (Самолёт), PIKK (ПИК), LSRG (ЛСР), ETLN (Эталон)
 - никакого английского в тексте ответа
 - стиль простой, человеческий, без воды
 - без советов, сигналов и призывов к действию
+- ТОЧНОСТЬ ВРЕМЕННЫХ ССЫЛОК: если в заголовке сравниваются два года (например «В 2026Г ... К 2025Г»), это значит «в 2026 году относительно 2025 года» — НЕ «план на 2025 год». Не переформулируй сравнение прошлых периодов как будущую цель. Пример правильно: «Сбербанк в 2026 году планирует нарастить прибыль по сравнению с 2025 годом». Пример НЕПРАВИЛЬНО: «Сбербанк планирует рост прибыли к 2025 году» (звучит как старый прогноз).
 
 Отвечай СТРОГО JSON, без пояснений:
 {
@@ -158,13 +159,13 @@ _USER_TEMPLATE = "Заголовок: {title}\nТекст: {text}"
 _VALID_TICKERS = frozenset({
     "GAZP", "LKOH", "ROSN", "NVTK", "TATN", "SNGS", "ENPG", "TRNFP", "BANEP",
     "RNFT", "NMTP",
-    "SBER", "VTBR", "TCSG", "CBOM", "BSPB", "AFKS", "SVCB", "SPBE", "RENI", "MTSB",
-    "GMKN", "CHMF", "NLMK", "MAGN", "PLZL", "ALRS", "POLY", "MTLR", "SELG", "RUAL", "RASP",
+    "SBER", "VTBR", "T", "CBOM", "BSPB", "AFKS", "SVCB", "SPBE", "RENI", "MBNK",
+    "GMKN", "CHMF", "NLMK", "MAGN", "PLZL", "ALRS", "MTLR", "SELG", "RUAL", "RASP",
     "IRAO", "HYDR", "FEES", "MSNG", "MSRS", "MRKV", "MRKU", "MRKP", "MRKC",
-    "YNDX", "MTSS", "RTKM", "VKCO", "POSI", "HHRU", "OZON", "DIAS",
+    "YDEX", "MTSS", "RTKM", "VKCO", "POSI", "HEAD", "OZON", "DIAS",
     "FLOT", "AFLT",
     "AKRN", "PHOR",
-    "MGNT", "FIVE", "FIXP", "AGRO", "MOEX", "SGZH", "MGKL", "OZPH",
+    "MGNT", "X5", "FIXR", "RAGR", "MOEX", "SGZH", "MGKL", "OZPH",
     "SMLT", "PIKK", "LSRG", "ETLN",
 })
 
@@ -186,8 +187,14 @@ async def analyze(title: str, text: str = "", recent_context: list[str] = []) ->
     if not settings.openrouter_api_key:
         return None
 
-    today = date.today().strftime("%d.%m.%Y")
-    user_content = "Сегодня " + today + ".\n\n" + _USER_TEMPLATE.format(title=title, text=text or title)
+    today = date.today()
+    today_str = today.strftime("%d.%m.%Y")
+    current_year = today.year
+    system_content = _SYSTEM_PROMPT.replace(
+        "ТОЧНОСТЬ ВРЕМЕННЫХ ССЫЛОК:",
+        f"ТОЧНОСТЬ ВРЕМЕННЫХ ССЫЛОК (сейчас {current_year} год, 2025 — прошлый год):",
+    )
+    user_content = "Сегодня " + today_str + ".\n\n" + _USER_TEMPLATE.format(title=title, text=text or title)
     if recent_context:
         events_block = "\n".join(f"• {t}" for t in recent_context[:5])
         user_content += f"\n\nПоследние события по этим тикерам:\n{events_block}"
@@ -195,7 +202,7 @@ async def analyze(title: str, text: str = "", recent_context: list[str] = []) ->
     payload = {
         "model": _MODEL,
         "messages": [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": system_content},
             {"role": "user",   "content": user_content},
         ],
         "response_format": {"type": "json_object"},

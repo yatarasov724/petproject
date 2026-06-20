@@ -58,9 +58,9 @@ def test_plzl_kept_for_gold_news():
     assert result == "PLZL"
 
 
-def test_mtsb_kept_when_mts_bank_in_title():
-    result = validate_tickers("MTSB", "СД МТС-Банка рекомендовал дивиденды")
-    assert result == "MTSB"
+def test_mbnk_kept_when_mts_bank_in_title():
+    result = validate_tickers("MBNK", "СД МТС-Банка рекомендовал дивиденды")
+    assert result == "MBNK"
 
 
 # ── AI ticker cross-validation (regression for ai_tickers bypassing validator) ──

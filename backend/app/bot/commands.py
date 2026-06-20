@@ -169,13 +169,13 @@ async def _handle_calendar(db: DBConnection, user_id: int) -> None:
 # Tickers grouped by sector for the keyboard
 _SECTORS: list[tuple[str, list[str]]] = [
     ("🛢 Нефть/Газ",    ["GAZP", "LKOH", "ROSN", "NVTK", "TATN", "SNGS", "ENPG", "TRNFP", "BANEP", "RNFT", "NMTP"]),
-    ("🏦 Банки",         ["SBER", "VTBR", "TCSG", "BSPB", "CBOM", "AFKS", "SVCB", "SPBE", "RENI", "MTSB"]),
-    ("⚙️ Металлы",       ["GMKN", "CHMF", "NLMK", "MAGN", "PLZL", "ALRS", "POLY", "MTLR", "SELG", "RUAL", "RASP"]),
+    ("🏦 Банки",         ["SBER", "VTBR", "T", "BSPB", "CBOM", "AFKS", "SVCB", "SPBE", "RENI", "MBNK"]),
+    ("⚙️ Металлы",       ["GMKN", "CHMF", "NLMK", "MAGN", "PLZL", "ALRS", "MTLR", "SELG", "RUAL", "RASP"]),
     ("⚡️ Энергетика",   ["IRAO", "HYDR", "FEES", "MSNG", "MSRS", "MRKV", "MRKU", "MRKP", "MRKC"]),
-    ("💻 IT/Телеком",    ["YNDX", "MTSS", "RTKM", "VKCO", "POSI", "HHRU", "OZON", "DIAS"]),
+    ("💻 IT/Телеком",    ["YDEX", "MTSS", "RTKM", "VKCO", "POSI", "HEAD", "OZON", "DIAS"]),
     ("🚢 Транспорт",     ["FLOT", "AFLT"]),
     ("🏗 Недвижимость",  ["SMLT", "PIKK", "LSRG", "ETLN"]),
-    ("🛒 Ритейл/Прочее", ["MGNT", "FIVE", "FIXP", "AGRO", "MOEX", "SGZH", "PHOR", "AKRN", "MGKL", "OZPH"]),
+    ("🛒 Ритейл/Прочее", ["MGNT", "X5", "FIXR", "RAGR", "MOEX", "SGZH", "PHOR", "AKRN", "MGKL", "OZPH"]),
 ]
 
 _TICKERS_PER_ROW = 3

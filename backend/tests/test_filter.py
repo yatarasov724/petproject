@@ -94,10 +94,10 @@ def test_mgkl_returns_mgkl():
     assert extract_tickers("СД МГКЛ рекомендовал дивиденды за 2025 год") == ["MGKL"]
 
 
-def test_mts_bank_returns_mtsb_not_mtss():
-    """МТС-Банк — это банк, не оператор. Тикер MTSB, не MTSS."""
-    assert extract_tickers("СД МТС-Банк рекомендовал дивиденды") == ["MTSB"]
-    assert extract_tickers("Совет директоров МТС банка объявил дивиденды") == ["MTSB"]
+def test_mts_bank_returns_mbnk_not_mtss():
+    """МТС-Банк — это банк, не оператор. Тикер MBNK, не MTSS."""
+    assert extract_tickers("СД МТС-Банк рекомендовал дивиденды") == ["MBNK"]
+    assert extract_tickers("Совет директоров МТС банка объявил дивиденды") == ["MBNK"]
 
 
 def test_mts_operator_still_works():
@@ -142,8 +142,8 @@ def test_oil_price_gives_commodity_tickers():
     assert "ROSN" in result
 
 
-def test_conflict_resolution_mtsb_wins():
-    """Если в тексте мтс банк, MTSB должен вытеснить MTSS."""
+def test_conflict_resolution_mbnk_wins():
+    """Если в тексте мтс банк, MBNK должен вытеснить MTSS."""
     result = extract_tickers("Акции МТС банка выросли на 3%")
-    assert "MTSB" in result
+    assert "MBNK" in result
     assert "MTSS" not in result
