@@ -286,3 +286,47 @@ class TestRule6_NothingFired:
         # small delta — rule 5 won't fire
         result = decide(cluster, _score(42))
         assert result.decision == Decision.SILENCE
+
+
+class TestRule5UpdateRequiresSourceGrowth:
+    def test_update_fires_when_source_count_grew(self, db):
+        """UPDATE allowed when new sources arrived since last publish."""
+        cluster = _make_cluster_row(
+            db,
+            status="published",
+            source_count=3,
+            published_score=55,
+            published_source_count=2,   # was 2 at last send, now 3 → grew
+            cooldown_until=_iso(_utcnow() - timedelta(hours=3)),
+        )
+        score = compute_score("ЦБ повысил ключевую ставку", source_count=3)
+        result = decide(cluster, score)
+        assert result.decision == Decision.UPDATE
+
+    def test_update_silenced_when_source_count_unchanged(self, db):
+        """UPDATE must be SILENCE when no new sources arrived since last publish."""
+        # published_score=70 ensures rule 6 (score delta) cannot fire:
+        # compute_score returns ~75 for this headline, delta=5 < UPDATE_SCORE_DELTA=15
+        cluster = _make_cluster_row(
+            db,
+            status="published",
+            source_count=3,
+            published_score=70,
+            published_source_count=3,   # same as source_count → no growth
+            cooldown_until=_iso(_utcnow() - timedelta(hours=3)),
+        )
+        score = compute_score("ЦБ повысил ключевую ставку", source_count=3)
+        result = decide(cluster, score)
+        assert result.decision == Decision.SILENCE
+
+    def test_new_event_unaffected(self, db):
+        """NEW_EVENT clusters always publish regardless of published_source_count."""
+        cluster = _make_cluster_row(
+            db,
+            status="new",
+            source_count=1,
+            published_source_count=0,
+        )
+        score = compute_score("ЦБ повысил ключевую ставку", source_count=1)
+        result = decide(cluster, score)
+        assert result.decision == Decision.NEW_EVENT

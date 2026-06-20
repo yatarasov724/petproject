@@ -129,13 +129,14 @@ def decide(
         )
 
     # ── rule 5: cross-source confirmation ─────────────────────────────────
-    if source_count >= UPDATE_SOURCE_FLOOR:
+    published_source_count = cluster["published_source_count"] or 0
+    if source_count > published_source_count and source_count >= UPDATE_SOURCE_FLOOR:
         return PublishDecision(
             decision=Decision.UPDATE,
             cluster_id=cluster_id,
             score=score_result.score,
             reason=(
-                f"confirmed by {source_count} sources · "
+                f"confirmed by {source_count} sources (was {published_source_count}) · "
                 f"score={score_result.score}"
             ),
         )
