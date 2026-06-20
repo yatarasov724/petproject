@@ -193,15 +193,21 @@ class TestPublishability:
         assert is_publishable(result.score)
 
     def test_tier3_alone_not_publishable(self):
-        # T3=10 < threshold=30
+        # T3=10 + keyword_bonus=5 (две ключевых: инфляци + росстат) = 15 < threshold=35
         result = compute_score("Росстат опубликовал данные по инфляции за март")
         # source_count=1, no type bonus for MACRO_DATA
         assert result.score < PUBLISH_THRESHOLD
 
     def test_tier3_three_sources_is_publishable(self):
-        # T3=10 + source_bonus=20 = 30 — exactly at threshold
+        # T3=10 + keyword_bonus=5 (инфляци + росстат) + source_bonus=20 = 35 — exactly at threshold=35
         result = compute_score("Росстат опубликовал данные по инфляции", source_count=3)
         assert result.score >= PUBLISH_THRESHOLD
+
+    def test_tier3_three_sources_no_keyword_bonus_not_publishable(self):
+        # T3=10 + source_bonus=20 = 30 < PUBLISH_THRESHOLD=35
+        # «Аэрофлот» — единственное совпадение; рейс/вылет — не ключевые слова
+        result = compute_score("Аэрофлот перенёс вылет из Москвы", source_count=3)
+        assert result.score < PUBLISH_THRESHOLD
 
     def test_article_min_score_boundary(self):
         # A T3 article alone scores 10 = ARTICLE_MIN_SCORE exactly → passes pre-filter

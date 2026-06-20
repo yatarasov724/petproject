@@ -26,6 +26,8 @@ _RUSSIA_MARKET_TOKENS: frozenset[str] = frozenset({
     "рубль", "офз",
     # Energy — critical for Russian budget and MOEX heavyweights
     "нефть", "опек",
+    # IPO/listing events on Russian exchanges — new issuers won't have a ticker yet
+    "ipo", "ипо",
 })
 
 

@@ -23,10 +23,10 @@ Score breakdown
   source_modifier — multi-source confirmation (+10 for 2 sources, +20 for 3+)
   type_modifier   — event type premium (SANCTIONS +15, WAR +15, etc.)
 
-Publish threshold: 30
+Publish threshold: 35
   Tier1 alone (50) → always publishes
-  Tier2 alone (25) → just below threshold; needs type_modifier or 2nd source
-  Tier3 alone (10) → needs 3 sources (10+20=30) to reach threshold
+  Tier2 alone (25) → just below threshold; needs type_modifier (+15→40) or 2nd source (+10→35)
+  Tier3 + 3 sources (10+20=30) → still below; needs keyword_bonus too (10+20+5=35)
   Noise (0)        → never publishes
 
 What passes:
@@ -47,6 +47,19 @@ from dataclasses import dataclass
 from enum import Enum
 
 logger = logging.getLogger(__name__)
+
+# ОПЕК (oil cartel) must not match "опека/опекой" (care/custody in Russian).
+#  is a Unicode word boundary: 'опек' followed by Cyrillic letter won't match.
+_OPEC_RU_RE = re.compile(r'\bопек\b', re.UNICODE)
+
+
+def _kw_match(kw: str, text: str) -> bool:
+    """Match keyword in lowercased text, with special word-boundary check for 'опек'."""
+    if kw not in text:
+        return False
+    if kw == "опек":
+        return bool(_OPEC_RU_RE.search(text))
+    return True
 
 # ── thresholds ────────────────────────────────────────────────────────────────
 
@@ -673,15 +686,15 @@ def compute_score(title: str, source_count: int = 1) -> ScoreResult:
     all_hits: list[tuple[str, int]] = []   # (keyword, tier_score)
 
     for kw in TIER1_KEYWORDS:
-        if kw in text:
+        if _kw_match(kw, text):
             all_hits.append((kw, _TIER1_BASE))
 
     for kw in TIER2_KEYWORDS:
-        if kw in text:
+        if _kw_match(kw, text):
             all_hits.append((kw, _TIER2_BASE))
 
     for kw in TIER3_KEYWORDS:
-        if kw in text:
+        if _kw_match(kw, text):
             all_hits.append((kw, _TIER3_BASE))
 
     if not all_hits:
@@ -738,7 +751,7 @@ def classify_event_type(text: str) -> EventType:
     """
     for event_type, signals in _TYPE_SIGNALS:
         for signal in signals:
-            if signal in text:
+            if _kw_match(signal, text):
                 return event_type
     return EventType.UNKNOWN
 
